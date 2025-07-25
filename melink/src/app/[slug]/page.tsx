@@ -2,12 +2,6 @@ import { kv } from '@vercel/kv';
 import { notFound } from 'next/navigation';
 import { Download, FileText } from 'lucide-react'; // Using lucide-react for icons
 
-interface PageProps {
-  params: {
-    slug: string;
-  };
-}
-
 interface MeetingData {
   title: string;
   videoUrl: string;
@@ -28,7 +22,7 @@ async function fetchTextContent(url: string): Promise<string> {
 }
 
 
-export default async function DownloadPage({ params }: PageProps) {
+export default async function DownloadPage({ params }: { params: { slug: string } }) {
   const { slug } = params;
   const data = await kv.get<MeetingData>(slug);
 
