@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import QRCode from "qrcode.react";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function UploadPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -130,7 +130,7 @@ export default function UploadPage() {
             <div className="mt-6 flex flex-col items-center">
                 <p className="text-gray-600">Scan the QR code to access the link:</p>
                 <div className="p-4 mt-2 bg-white inline-block rounded-lg shadow-md">
-                    <QRCode value={finalUrl} size={256} />
+                    <QRCodeSVG value={finalUrl} size={256} />
                 </div>
             </div>
             <button
