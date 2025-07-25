@@ -31,8 +31,8 @@ export default function UploadPage() {
       // Construct the full URL for display and QR code
       const fullUrl = new URL(url, window.location.origin).toString();
       setFinalUrl(fullUrl);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: Error | unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSubmitting(false);
     }

@@ -1,6 +1,6 @@
 import { kv } from '@vercel/kv';
 import { notFound } from 'next/navigation';
-import { Download, FileText, Video } from 'lucide-react'; // Using lucide-react for icons
+import { Download, FileText } from 'lucide-react'; // Using lucide-react for icons
 
 interface PageProps {
   params: {
@@ -22,7 +22,7 @@ async function fetchTextContent(url: string): Promise<string> {
         const response = await fetch(url);
         if (!response.ok) return `Error: Could not load content (status: ${response.status})`;
         return response.text();
-    } catch (error) {
+    } catch {
         return "Error: Could not fetch content.";
     }
 }

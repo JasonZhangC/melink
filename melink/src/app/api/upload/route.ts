@@ -3,9 +3,6 @@ import { kv } from '@vercel/kv';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const { searchParams } = new URL(request.url);
-  const filename = searchParams.get('filename');
-
   const form = await request.formData();
   const title = form.get('title') as string | null;
   const videoFile = form.get('video') as File | null;
@@ -58,10 +55,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Return the path for the user to be redirected to
     return NextResponse.json({ url: `/${slug}` });
 
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error('Upload failed:', error);
     return NextResponse.json(
-      { error: `Upload failed: ${error.message}` },
+      { error: `Upload failed: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 },
     );
   }

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { UploadCloud, Share2 } from 'lucide-react';
+import { UploadCloud } from 'lucide-react';
 
 export default function HomePage() {
   return (
