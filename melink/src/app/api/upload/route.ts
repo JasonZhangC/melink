@@ -3,30 +3,39 @@ import { kv } from '@vercel/kv';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const form = await request.formData();
-  const title = form.get('title') as string | null;
-  const videoFile = form.get('video') as File | null;
-  const transcription = form.get('transcription') as string | null;
-  const summary = form.get('summary') as string | null;
+  try {
+    const form = await request.formData();
+    const title = form.get('title') as string | null;
+    const videoFile = form.get('video') as File | null;
+    const transcription = form.get('transcription') as string | null;
+    const summary = form.get('summary') as string | null;
 
-  if (!title || !videoFile || !transcription || !summary) {
-    return NextResponse.json(
-      { error: 'Missing required fields.' },
-      { status: 400 },
-    );
-  }
-  
-  // Sanitize the title to be URL-friendly
-  const slug = title.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-
-  if (!slug) {
-    return NextResponse.json(
-        { error: 'Invalid title. Please use a title that can be converted into a URL-friendly slug.' },
+    if (!title || !videoFile || !transcription || !summary) {
+      return NextResponse.json(
+        { error: 'Missing required fields.' },
         { status: 400 },
       );
-  }
+    }
 
-  try {
+    // 检查文件大小 (50MB限制)
+    const maxFileSize = 50 * 1024 * 1024; // 50MB in bytes
+    if (videoFile.size > maxFileSize) {
+      return NextResponse.json(
+        { error: `文件过大，当前文件大小: ${Math.round(videoFile.size / 1024 / 1024)}MB，最大支持50MB` },
+        { status: 413 },
+      );
+    }
+    
+    // Sanitize the title to be URL-friendly
+    const slug = title.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+    if (!slug) {
+      return NextResponse.json(
+          { error: 'Invalid title. Please use a title that can be converted into a URL-friendly slug.' },
+          { status: 400 },
+        );
+    }
+
     // Upload video
     const videoBlob = await put(videoFile.name, videoFile, {
       access: 'public',

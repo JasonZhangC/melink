@@ -7,6 +7,27 @@ export default function UploadPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalUrl, setFinalUrl] = useState("");
   const [error, setError] = useState("");
+  const [fileInfo, setFileInfo] = useState<string>("");
+
+  // 处理文件选择
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      const sizeInMB = file.size / 1024 / 1024;
+      const maxSizeInMB = 50;
+      
+      if (sizeInMB > maxSizeInMB) {
+        setFileInfo(`⚠️ 文件过大: ${sizeInMB.toFixed(1)}MB (最大支持${maxSizeInMB}MB)`);
+        setError("请选择小于50MB的文件");
+      } else {
+        setFileInfo(`✅ 文件大小: ${sizeInMB.toFixed(1)}MB`);
+        setError("");
+      }
+    } else {
+      setFileInfo("");
+      setError("");
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -15,6 +36,14 @@ export default function UploadPage() {
     setFinalUrl("");
 
     const formData = new FormData(event.currentTarget);
+    
+    // 在提交前再次检查文件大小
+    const videoFile = formData.get('video') as File;
+    if (videoFile && videoFile.size > 50 * 1024 * 1024) {
+      setError("文件过大，请选择小于50MB的文件");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const response = await fetch("/api/upload", {
@@ -23,8 +52,21 @@ export default function UploadPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Something went wrong");
+        // 尝试解析JSON错误信息，如果失败则使用HTTP状态文本
+        let errorMessage = "上传失败";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || "服务器返回未知错误";
+        } catch (jsonError) {
+          // 如果响应不是JSON格式，使用状态码和状态文本
+          if (response.status === 413) {
+            errorMessage = "文件过大，请选择较小的文件（建议小于50MB）";
+          } else {
+            const responseText = await response.text();
+            errorMessage = `服务器错误 (${response.status}): ${responseText.substring(0, 100)}...`;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const { url } = await response.json();
@@ -32,6 +74,7 @@ export default function UploadPage() {
       const fullUrl = new URL(url, window.location.origin).toString();
       setFinalUrl(fullUrl);
     } catch (err: Error | unknown) {
+      console.error('Upload error:', err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSubmitting(false);
@@ -73,8 +116,10 @@ export default function UploadPage() {
                 name="video"
                 required
                 accept="video/*"
+                onChange={handleFileChange}
                 className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-600 hover:file:bg-indigo-100"
               />
+              {fileInfo && <p className="mt-2 text-sm text-gray-600">{fileInfo}</p>}
             </div>
 
             <div>
