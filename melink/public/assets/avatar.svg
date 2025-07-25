@@ -1,0 +1,6 @@
+<svg width="79" height="79" viewBox="0 0 79 79" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="39.5" cy="39.5" r="39.5" fill="#e0e0e0" stroke="#ccc" stroke-width="2"/>
+  <circle cx="39.5" cy="30" r="12" fill="#ccc"/>
+  <path d="M20 60 Q39.5 45 59 60" fill="#ccc"/>
+  <text x="39.5" y="70" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#999">头像</text>
+</svg> 
