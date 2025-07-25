@@ -22,8 +22,8 @@ async function fetchTextContent(url: string): Promise<string> {
 }
 
 
-export default async function DownloadPage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+export default async function DownloadPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   const data = await kv.get<MeetingData>(slug);
 
   if (!data) {
