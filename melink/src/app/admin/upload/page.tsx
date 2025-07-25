@@ -14,15 +14,8 @@ export default function UploadPage() {
     const file = event.target.files?.[0];
     if (file) {
       const sizeInMB = file.size / 1024 / 1024;
-      const maxSizeInMB = 50;
-      
-      if (sizeInMB > maxSizeInMB) {
-        setFileInfo(`⚠️ 文件过大: ${sizeInMB.toFixed(1)}MB (最大支持${maxSizeInMB}MB)`);
-        setError("请选择小于50MB的文件");
-      } else {
-        setFileInfo(`✅ 文件大小: ${sizeInMB.toFixed(1)}MB`);
-        setError("");
-      }
+      setFileInfo(`📁 文件大小: ${sizeInMB.toFixed(1)}MB`);
+      setError("");
     } else {
       setFileInfo("");
       setError("");
@@ -36,14 +29,6 @@ export default function UploadPage() {
     setFinalUrl("");
 
     const formData = new FormData(event.currentTarget);
-    
-    // 在提交前再次检查文件大小
-    const videoFile = formData.get('video') as File;
-    if (videoFile && videoFile.size > 50 * 1024 * 1024) {
-      setError("文件过大，请选择小于50MB的文件");
-      setIsSubmitting(false);
-      return;
-    }
 
     try {
       const response = await fetch("/api/upload", {
@@ -59,12 +44,8 @@ export default function UploadPage() {
           errorMessage = errorData.error || "服务器返回未知错误";
         } catch (jsonError) {
           // 如果响应不是JSON格式，使用状态码和状态文本
-          if (response.status === 413) {
-            errorMessage = "文件过大，请选择较小的文件（建议小于50MB）";
-          } else {
-            const responseText = await response.text();
-            errorMessage = `服务器错误 (${response.status}): ${responseText.substring(0, 100)}...`;
-          }
+          const responseText = await response.text();
+          errorMessage = `服务器错误 (${response.status}): ${responseText.substring(0, 100)}...`;
         }
         throw new Error(errorMessage);
       }

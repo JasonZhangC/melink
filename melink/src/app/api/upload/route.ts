@@ -16,15 +16,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 400 },
       );
     }
-
-    // 检查文件大小 (50MB限制)
-    const maxFileSize = 50 * 1024 * 1024; // 50MB in bytes
-    if (videoFile.size > maxFileSize) {
-      return NextResponse.json(
-        { error: `文件过大，当前文件大小: ${Math.round(videoFile.size / 1024 / 1024)}MB，最大支持50MB` },
-        { status: 413 },
-      );
-    }
     
     // Sanitize the title to be URL-friendly
     const slug = title.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
