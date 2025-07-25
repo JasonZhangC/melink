@@ -30,15 +30,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Upload video
     const videoBlob = await put(videoFile.name, videoFile, {
       access: 'public',
+      addRandomSuffix: true,
     });
 
     // Create text blobs and upload them
     const transcriptionBlob = await put(`${slug}-transcription.txt`, transcription, {
         access: 'public',
+        addRandomSuffix: true,
     });
 
     const summaryBlob = await put(`${slug}-summary.txt`, summary, {
         access: 'public',
+        addRandomSuffix: true,
     });
 
     // Store the URLs in Vercel KV
