@@ -20,12 +20,6 @@ export default function HomePage() {
             <UploadCloud className="h-5 w-5" />
             Get Started
           </Link>
-          <Link
-            href="/hackathon"
-            className="rounded-md bg-green-600 px-6 py-3 text-lg font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
-          >
-            黑客松交流
-          </Link>
           <p className="text-sm font-semibold leading-6 text-gray-900">
             No sign-up required.
           </p>
