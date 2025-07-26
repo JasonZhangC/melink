@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Download, FileText } from 'lucide-react';
-import { DownloadButton } from '../../lib/DownloadButton';
+import Image from 'next/image';
+import './SharePage.css';
 
+// 定义会议数据结构
 interface MeetingData {
   title: string;
   videoUrl: string;
@@ -12,42 +13,41 @@ interface MeetingData {
   createdAt: string;
 }
 
-// Helper to fetch text content from a URL
+// 异步获取文本内容的辅助函数
 async function fetchTextContent(url: string): Promise<string> {
     try {
         const response = await fetch(url);
-        if (!response.ok) return `Error: Could not load content (status: ${response.status})`;
-        return response.text();
+        if (!response.ok) return `错误：无法加载内容 (状态: ${response.status})`;
+        return await response.text();
     } catch {
-        return "Error: Could not fetch content.";
+        return "错误：无法获取内容。";
     }
 }
 
-export default function DownloadPage({ params }: { params: Promise<{ slug: string }> }) {
+export default function SharePage({ params }: { params: { slug: string } }) {
   const [data, setData] = useState<MeetingData | null>(null);
   const [transcriptionContent, setTranscriptionContent] = useState<string>('');
   const [summaryContent, setSummaryContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  
+  // 控制内容折叠的状态
+  const [isTranscriptionCollapsed, setIsTranscriptionCollapsed] = useState(true);
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const resolvedParams = await params;
-        const response = await fetch(`/api/data/${resolvedParams.slug}`);
+        const response = await fetch(`/api/data/${params.slug}`);
         
         if (!response.ok) {
-          if (response.status === 404) {
-            setError('页面未找到');
-            return;
-          }
-          throw new Error(`HTTP错误! 状态: ${response.status}`);
+          setError(response.status === 404 ? '页面未找到' : `HTTP错误! 状态: ${response.status}`);
+          return;
         }
         
-        const meetingData = await response.json();
+        const meetingData: MeetingData = await response.json();
         setData(meetingData);
         
-        // Fetch text content in parallel
         const [transcription, summary] = await Promise.all([
           fetchTextContent(meetingData.transcriptionUrl),
           fetchTextContent(meetingData.summaryUrl)
@@ -57,7 +57,7 @@ export default function DownloadPage({ params }: { params: Promise<{ slug: strin
         setSummaryContent(summary);
         
       } catch (err) {
-        console.error('Failed to load data:', err);
+        console.error('加载数据失败:', err);
         setError(err instanceof Error ? err.message : '加载数据失败');
       } finally {
         setLoading(false);
@@ -65,111 +65,151 @@ export default function DownloadPage({ params }: { params: Promise<{ slug: strin
     }
     
     loadData();
-  }, [params]);
+  }, [params.slug]);
+
+  const handleShare = async () => {
+    const shareData = {
+      title: data?.title || '黑客松交流',
+      url: window.location.href,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.error('分享错误:', err);
+      }
+    } else {
+      navigator.clipboard.writeText(shareData.url)
+        .then(() => alert('链接已复制到剪贴板'))
+        .catch(err => console.error('无法复制文本: ', err));
+    }
+  };
+
+  const handleDownload = () => {
+    if (!data?.videoUrl) return;
+    const a = document.createElement('a');
+    a.href = data.videoUrl;
+    a.download = `${data.title || 'video'}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   if (loading) {
     return (
-      <main className="bg-gray-50 font-sans min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
+      <div className="container">
+        <div style={{ textAlign: 'center', paddingTop: '50%' }}>
+          <p>加载中...</p>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error || !data) {
     return (
-      <main className="bg-gray-50 font-sans min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-800 mb-4">
-            {error || '页面未找到'}
-          </h1>
-          <p className="text-gray-600">请检查链接是否正确或联系管理员。</p>
+      <div className="container">
+        <div style={{ textAlign: 'center', paddingTop: '50%' }}>
+          <h1>{error || '页面未找到'}</h1>
+          <p>请检查链接是否正确或联系管理员。</p>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="bg-gray-50 font-sans">
-        <div className="container mx-auto max-w-4xl px-4 py-12">
-            <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12">
-                
-                {/* Header */}
-                <div className="text-center mb-10">
-                    <h1 className="text-4xl md:text-5xl font-bold text-gray-800 tracking-tight">
-                        {data.title}
-                    </h1>
-                    <p className="text-gray-500 mt-2">
-                        上传时间: {new Date(data.createdAt).toLocaleDateString('zh-CN')}
-                    </p>
-                </div>
+    <div className="container">
+      <div className="nav-bar">
+        <div className="publisher">发布者：</div>
+      </div>
 
-                {/* Main Content Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    
-                    {/* Left Column for Video */}
-                    <div className="md:col-span-2">
-                        <div className="aspect-w-16 aspect-h-9">
-                            <video controls className="w-full h-full rounded-lg shadow-md" src={data.videoUrl} poster="">
-                                您的浏览器不支持视频标签。
-                            </video>
-                        </div>
-                        <div className="mt-4">
-                          <DownloadButton
-                            url={data.videoUrl}
-                            filename={`${data.title}.mp4`}
-                            className="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-6 py-3 text-lg font-semibold text-white shadow-sm transition-transform transform hover:scale-105 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                          >
-                            <Download className="mr-3 h-6 w-6" />
-                            下载视频
-                          </DownloadButton>
-                        </div>
-                    </div>
+      <div className="avatar">
+        <Image src="/assets/59c703059763c215467f37e29240383bbd8eda59.png" alt="Avatar" width={79} height={79} />
+      </div>
 
-                    {/* Right Column for Downloads */}
-                    <div className="space-y-4">
-                        <DownloadButton
-                          url={data.transcriptionUrl}
-                          filename={`${data.title}-transcription.txt`}
-                          className="group flex w-full items-center rounded-lg border border-gray-200 bg-white p-4 transition hover:bg-gray-50 hover:shadow-sm"
-                        >
-                          <FileText className="h-8 w-8 text-indigo-500 mr-4" />
-                          <div>
-                              <p className="font-semibold text-gray-700">语音转录</p>
-                              <p className="text-sm text-gray-500">下载 .txt</p>
-                          </div>
-                        </DownloadButton>
-                        
-                        <DownloadButton
-                          url={data.summaryUrl}
-                          filename={`${data.title}-summary.txt`}
-                          className="group flex w-full items-center rounded-lg border border-gray-200 bg-white p-4 transition hover:bg-gray-50 hover:shadow-sm"
-                        >
-                          <FileText className="h-8 w-8 text-green-500 mr-4" />
-                          <div>
-                              <p className="font-semibold text-gray-700">会议摘要</p>
-                              <p className="text-sm text-gray-500">下载 .txt</p>
-                          </div>
-                        </DownloadButton>
-                    </div>
-                </div>
-
-                {/* Transcription and Summary Sections */}
-                <div className="mt-12 space-y-10">
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-800 border-b-2 border-indigo-100 pb-2 mb-4">语音转录</h2>
-                        <pre className="whitespace-pre-wrap bg-gray-50 p-4 rounded-lg text-gray-700 font-mono text-sm leading-relaxed">{transcriptionContent}</pre>
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-800 border-b-2 border-green-100 pb-2 mb-4">会议摘要</h2>
-                        <pre className="whitespace-pre-wrap bg-gray-50 p-4 rounded-lg text-gray-700 font-mono text-sm leading-relaxed">{summaryContent}</pre>
-                    </div>
-                </div>
-
-            </div>
+      <div className="title-section">
+        <div className="title-content">
+          <h1 className="main-title">{data?.title}</h1>
+          <div className="arrow-down">
+            <Image src="/assets/f7481fc2238f527543122988b5b213d7895fa419.svg" alt="Arrow Down" width={18} height={18} />
+          </div>
         </div>
-    </main>
+        <div className="brand">MELINK</div>
+      </div>
+
+      <div className="content-section">
+        {/* 语音转录卡片 */}
+        <div className="voice-card">
+          <div className="card-content">
+            <div className="card-text">
+              <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)}>
+                <h2 className="card-title">语音转录</h2>
+                <div className={`collapse-arrow ${!isTranscriptionCollapsed ? 'expanded' : ''}`}>
+                  <Image src="/assets/f7481fc2238f527543122988b5b213d7895fa419.svg" alt="expand" width={14} height={14} />
+                </div>
+              </div>
+              <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`}>
+                <div className="card-description">
+                  <div className="location-icon">
+                    <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
+                  </div>
+                  <pre className="description-text">{transcriptionContent}</pre>
+                </div>
+              </div>
+            </div>
+            <div className="card-image">
+              <Image src="/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png" alt="Voice" width={86} height={86} />
+            </div>
+          </div>
+        </div>
+
+        {/* 会议纪要卡片 */}
+        <div className="meeting-card">
+          <div className="card-content">
+            <div className="card-text">
+              <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}>
+                <h2 className="card-title">会议纪要</h2>
+                <div className={`collapse-arrow ${!isSummaryCollapsed ? 'expanded' : ''}`}>
+                  <Image src="/assets/f7481fc2238f527543122988b5b213d7895fa419.svg" alt="expand" width={14} height={14} />
+                </div>
+              </div>
+              <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`}>
+                <div className="card-description">
+                  <div className="meeting-icon">
+                    <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
+                  </div>
+                  <pre className="description-text">{summaryContent}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="video-section">
+            <video controls className="video-bg" src={data?.videoUrl} style={{opacity: 1}}>
+                您的浏览器不支持视频标签。
+            </video>
+        </div>
+      </div>
+
+      <div className="bottom-buttons">
+        <div className="download-button" onClick={handleDownload}>
+          <div className="button-container">
+            <Image src="/assets/f162a9928022de1e735148855fafa1dc4ac37ed7.svg" alt="Download Button" width={48} height={48} />
+            <div className="download-icon">
+              <Image src="/assets/fa5f239705275577eb4947667f2d57c9ccfd5689.png" alt="Download" width={31} height={31} />
+            </div>
+          </div>
+        </div>
+        
+        <div className="share-button" onClick={handleShare}>
+          <div className="button-bg">
+            <Image src="/assets/7b5968cd96dee67fcf408b767b9aff844e0294c3.svg" alt="Button Background" width={48} height={48} />
+          </div>
+          <div className="share-icon">
+            <Image src="/assets/d69c41f95049fd47b70084db9a5184a28cc780f9.png" alt="Share" width={39} height={39} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

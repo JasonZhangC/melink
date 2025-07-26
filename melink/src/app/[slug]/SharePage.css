@@ -1,0 +1,326 @@
+/* 全局样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #ffffff;
+    color: #191d30;
+    line-height: 1.5;
+}
+
+.container {
+    position: relative;
+    width: 375px;
+    height: 100vh;
+    margin: 0 auto;
+    background-color: #ffffff;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* 导航栏 */
+.nav-bar {
+    position: absolute;
+    top: 6.965%;
+    left: 0;
+    right: 0;
+    bottom: 90.547%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    overflow: hidden;
+}
+
+.publisher {
+    font-family: 'SF Pro Display', sans-serif;
+    font-weight: 400;
+    font-size: 16px;
+    color: #8c8e97;
+    line-height: 20px;
+}
+
+/* 头像 */
+.avatar {
+    position: absolute;
+    top: 31px;
+    left: 274px;
+    width: 79px;
+    height: 79px;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* 主标题区域 */
+.title-section {
+    position: absolute;
+    top: 88px;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+}
+
+.title-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.main-title {
+    font-family: 'SF Pro Display', sans-serif;
+    font-weight: 700;
+    font-size: 34px;
+    color: #191d30;
+    line-height: 38px;
+    letter-spacing: -0.37px;
+    margin: 0;
+}
+
+.arrow-down {
+    width: 18px;
+    height: 18px;
+}
+
+.arrow-down img {
+    width: 100%;
+    height: 100%;
+}
+
+.brand {
+    font-family: 'STIXIntegralsUp', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: #074244;
+    line-height: 20px;
+}
+
+/* 内容区域 */
+.content-section {
+    position: absolute;
+    top: 150px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    padding: 0 24px;
+}
+
+/* 卡片通用样式 */
+.card-content {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 20px 24px;
+    background-color: #ffffff;
+    border: 1px solid #ecedef;
+    border-radius: 24px;
+    width: 100%;
+}
+
+.card-text {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.card-title {
+    font-family: 'SF Pro Display', sans-serif;
+    font-weight: 700;
+    font-size: 24px;
+    color: #191d30;
+    line-height: 28px;
+    letter-spacing: -0.35px;
+    margin: 0;
+}
+
+.card-description {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding-top: 8px;
+}
+
+.location-icon,
+.meeting-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.description-text {
+    font-family: 'SF Pro Display', sans-serif;
+    font-weight: 400;
+    font-size: 16px;
+    color: #8c8e97;
+    line-height: 20px;
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.card-image {
+    width: 86px;
+    height: 86px;
+    border-radius: 20px;
+    overflow: hidden;
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+
+.card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* 折叠动画 */
+.collapsible-content {
+    max-height: 1000px; /* 一个足够大的值 */
+    overflow: hidden;
+    transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out;
+    opacity: 1;
+}
+
+.collapsible-content.collapsed {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    margin-top: -8px; /* 避免折叠时产生额外间距 */
+}
+
+.collapse-arrow {
+    transition: transform 0.3s ease;
+}
+
+.collapse-arrow.expanded {
+    transform: rotate(180deg);
+}
+
+
+/* 视频背景区域 */
+.video-section {
+    height: 186px; /* 调整高度以适应视频播放器 */
+    width: 100%;
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid #ecedef;
+}
+
+.video-bg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* 底部按钮组 */
+.bottom-buttons {
+    position: fixed;
+    bottom: 30px;
+    right: calc(50% - 187.5px + 24px); /* (375px/2) - 24px from right */
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    z-index: 100;
+}
+
+/* 下载按钮 */
+.download-button, .share-button {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.download-button:hover,
+.share-button:hover {
+    transform: scale(1.05);
+}
+
+.button-container, .button-bg {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.button-container img, .button-bg img {
+    width: 100%;
+    height: 100%;
+}
+
+.download-icon {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 31px;
+    height: 31px;
+}
+
+.download-icon img {
+    width: 100%;
+    height: 100%;
+}
+
+/* 分享按钮 */
+.share-icon {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 39px;
+    height: 39px;
+}
+
+.share-icon img {
+    width: 100%;
+    height: 100%;
+}
+
+/* 响应式设计 */
+@media (max-width: 375px) {
+    .container {
+        width: 100%;
+        padding-bottom: 100px; /* 确保底部内容不被按钮遮挡 */
+    }
+    
+    .card-content {
+        padding: 16px 20px;
+    }
+    
+    .main-title {
+        font-size: 28px;
+        line-height: 32px;
+    }
+    
+    .card-title {
+        font-size: 20px;
+        line-height: 24px;
+    }
+
+    .bottom-buttons {
+        right: 24px;
+    }
+}
