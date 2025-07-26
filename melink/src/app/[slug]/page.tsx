@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import './SharePage.css';
 
@@ -22,6 +22,95 @@ async function fetchTextContent(url: string): Promise<string> {
     } catch {
         return "错误：无法获取内容。";
     }
+}
+
+// 简单的markdown转换函数
+function parseMarkdownToJSX(text: string): React.ReactElement {
+  if (!text) return <span>暂无内容</span>;
+  
+  const lines = text.split('\n');
+  const elements: React.ReactElement[] = [];
+  let currentListItems: string[] = [];
+  let key = 0;
+  
+  const flushList = () => {
+    if (currentListItems.length > 0) {
+      elements.push(
+        <ul key={`list-${key++}`} style={{ marginLeft: '16px', marginBottom: '12px' }}>
+          {currentListItems.map((item, idx) => (
+            <li key={idx} style={{ marginBottom: '4px', color: '#666' }}>
+              {parseInlineMarkdown(item)}
+            </li>
+          ))}
+        </ul>
+      );
+      currentListItems = [];
+    }
+  };
+  
+  const parseInlineMarkdown = (line: string): React.ReactElement => {
+    // 处理加粗文本 **text**
+    let result = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // 处理代码 `text`
+    result = result.replace(/`(.*?)`/g, '<code style="background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-size: 0.9em;">$1</code>');
+    
+    return <span dangerouslySetInnerHTML={{ __html: result }} />;
+  };
+  
+  lines.forEach((line, index) => {
+    const trimmedLine = line.trim();
+    
+    if (trimmedLine === '') {
+      flushList();
+      if (elements.length > 0) {
+        elements.push(<br key={`br-${key++}`} />);
+      }
+      return;
+    }
+    
+    // 处理标题
+    if (trimmedLine.startsWith('### ')) {
+      flushList();
+      const title = trimmedLine.replace('### ', '').replace(/\*\*/g, '');
+      elements.push(
+        <h3 key={`h3-${key++}`} style={{ 
+          fontSize: '16px', 
+          fontWeight: '600', 
+          marginBottom: '8px', 
+          marginTop: index > 0 ? '16px' : '0',
+          color: '#333'
+        }}>
+          {title}
+        </h3>
+      );
+      return;
+    }
+    
+    // 处理列表项
+    if (trimmedLine.startsWith('- ')) {
+      const listItem = trimmedLine.replace('- ', '');
+      currentListItems.push(listItem);
+      return;
+    }
+    
+    // 处理普通段落
+    flushList();
+    if (trimmedLine) {
+      elements.push(
+        <p key={`p-${key++}`} style={{ 
+          marginBottom: '8px', 
+          lineHeight: '1.6',
+          color: '#555'
+        }}>
+          {parseInlineMarkdown(trimmedLine)}
+        </p>
+      );
+    }
+  });
+  
+  flushList(); // 处理最后的列表项
+  
+  return <div>{elements}</div>;
 }
 
 // 截取视频首帧的函数
@@ -265,12 +354,26 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
               <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)}>
                 <h2 className="card-title">语音转录</h2>
               </div>
-              <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`}>
+              <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`} style={{
+                maxHeight: isTranscriptionCollapsed ? '0' : '300px',
+                overflowY: isTranscriptionCollapsed ? 'hidden' : 'auto',
+                transition: 'max-height 0.3s ease-in-out'
+              }}>
                 <div className="card-description">
                   <div className="location-icon">
                     <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
                   </div>
-                  <pre className="description-text">{transcriptionContent}</pre>
+                  <pre className="description-text" style={{
+                    margin: 0,
+                    padding: '0 8px 8px 0',
+                    fontFamily: 'inherit',
+                    fontSize: '14px',
+                    lineHeight: '1.6',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#ccc transparent'
+                  }}>{transcriptionContent}</pre>
                 </div>
               </div>
             </div>
@@ -300,12 +403,26 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
               <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}>
                 <h2 className="card-title">会议纪要</h2>
               </div>
-              <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`}>
+              <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`} style={{
+                maxHeight: isSummaryCollapsed ? '0' : '300px',
+                overflowY: isSummaryCollapsed ? 'hidden' : 'auto',
+                transition: 'max-height 0.3s ease-in-out'
+              }}>
                 <div className="card-description">
                   <div className="meeting-icon">
                     <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
                   </div>
-                  <pre className="description-text">{summaryContent}</pre>
+                  <div className="description-text markdown-content" style={{
+                    fontFamily: 'inherit',
+                    fontSize: '14px',
+                    lineHeight: '1.6',
+                    color: '#333',
+                    padding: '0 8px 8px 0',
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#ccc transparent'
+                  }}>
+                    {parseMarkdownToJSX(summaryContent)}
+                  </div>
                 </div>
               </div>
             </div>
