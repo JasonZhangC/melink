@@ -681,9 +681,9 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 maxHeight: isTranscriptionCollapsed ? '0' : calculateContentHeight(),
                 overflowY: isTranscriptionCollapsed ? 'hidden' : 'auto',
                 transition: 'max-height 0.3s ease-in-out, padding 0.3s ease-in-out',
-                padding: isTranscriptionCollapsed ? '0' : '8px 0'
+                padding: isTranscriptionCollapsed ? '0' : '2px 0'
               }}>
-                <div className="card-description">
+                <div className="card-description" style={{ marginTop: '0' }}>
                   <div className="location-icon" style={{
                     transform: isTranscriptionCollapsed ? 'rotate(180deg)' : 'rotate(90deg)',
                     transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)'
@@ -692,7 +692,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                   </div>
                   <pre className="description-text" style={{
                     margin: 0,
-                    padding: '0 8px 8px 0',
+                    padding: '2px 8px 8px 0',
                     fontFamily: 'inherit',
                     fontSize: '14px',
                     lineHeight: '1.6',
@@ -735,9 +735,9 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 maxHeight: isSummaryCollapsed ? '0' : calculateContentHeight(),
                 overflowY: isSummaryCollapsed ? 'hidden' : 'auto',
                 transition: 'max-height 0.3s ease-in-out, padding 0.3s ease-in-out',
-                padding: isSummaryCollapsed ? '0' : '8px 0'
+                padding: isSummaryCollapsed ? '0' : '2px 0'
               }}>
-                <div className="card-description">
+                <div className="card-description" style={{ marginTop: '0' }}>
                   <div className="meeting-icon" style={{
                     transform: isSummaryCollapsed ? 'rotate(180deg)' : 'rotate(90deg)',
                     transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)'
@@ -749,7 +749,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                     fontSize: viewportHeight < 600 ? '13px' : '14px', // 小屏幕使用更小字体
                     lineHeight: '1.6',
                     color: '#333',
-                    padding: '0 8px 8px 0',
+                    padding: '2px 8px 8px 0',
                     scrollbarWidth: 'thin',
                     scrollbarColor: '#ccc transparent'
                   }}>
