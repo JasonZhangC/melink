@@ -343,7 +343,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         <div className="title-content">
           <h1 className="main-title">{data?.title}</h1>
         </div>
-        <div className="brand">MELINK</div>
       </div>
 
       <div className="content-section">
