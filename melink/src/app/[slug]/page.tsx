@@ -211,84 +211,230 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   const handleDownload = async () => {
     if (!data?.videoUrl) return;
     
-    try {
-      // 显示下载提示
-      const downloadText = document.createElement('div');
-      downloadText.innerHTML = '正在准备下载...';
-      downloadText.style.cssText = `
+    // 创建进度弹窗
+    const createProgressModal = () => {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
         position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 12px 24px;
-        border-radius: 8px;
-        z-index: 9999;
-        font-size: 14px;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
       `;
-      document.body.appendChild(downloadText);
       
-      // 获取视频数据
+      const content = document.createElement('div');
+      content.style.cssText = `
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        width: 320px;
+        max-width: 90vw;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+      `;
+      
+      content.innerHTML = `
+        <div style="margin-bottom: 16px;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #333;">下载进行中</h3>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <div style="width: 100%; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden;">
+            <div id="progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #007AFF, #5AC8FA); transition: width 0.3s ease; border-radius: 4px;"></div>
+          </div>
+        </div>
+        <div id="progress-text" style="color: #666; font-size: 14px; margin-bottom: 8px;">准备下载...</div>
+        <div id="speed-text" style="color: #999; font-size: 12px; margin-bottom: 8px;">--</div>
+        <div id="time-text" style="color: #007AFF; font-size: 13px; font-weight: 500;">预计还需 -- </div>
+        <button id="cancel-download" style="
+          margin-top: 16px;
+          padding: 8px 16px;
+          background: #f5f5f5;
+          border: none;
+          border-radius: 6px;
+          color: #666;
+          cursor: pointer;
+          font-size: 14px;
+        ">取消下载</button>
+      `;
+      
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+      
+      return {
+        modal,
+        progressBar: content.querySelector('#progress-bar') as HTMLElement,
+        progressText: content.querySelector('#progress-text') as HTMLElement,
+        speedText: content.querySelector('#speed-text') as HTMLElement,
+        timeText: content.querySelector('#time-text') as HTMLElement,
+        cancelBtn: content.querySelector('#cancel-download') as HTMLElement
+      };
+    };
+    
+    const progressModal = createProgressModal();
+    let isCancelled = false;
+    
+    // 取消下载功能
+    progressModal.cancelBtn.onclick = () => {
+      isCancelled = true;
+      document.body.removeChild(progressModal.modal);
+    };
+    
+    try {
+      // 获取文件大小
       const response = await fetch(data.videoUrl);
       if (!response.ok) throw new Error('下载失败');
       
-      // 创建blob
-      const blob = await response.blob();
+      const contentLength = response.headers.get('content-length');
+      const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+      
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('无法读取响应流');
+      
+      let receivedLength = 0;
+      const chunks: Uint8Array[] = [];
+      let startTime = Date.now();
+      let lastUpdateTime = startTime;
+      
+      // 格式化文件大小
+      const formatBytes = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      };
+      
+      // 格式化时间
+      const formatTime = (seconds: number) => {
+        if (seconds < 60) return `${Math.round(seconds)}秒`;
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = Math.round(seconds % 60);
+        if (minutes < 60) {
+          return remainingSeconds > 0 ? `${minutes}分${remainingSeconds}秒` : `${minutes}分钟`;
+        }
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return `${hours}小时${remainingMinutes}分钟`;
+      };
+      
+      while (true) {
+        if (isCancelled) return;
+        
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        chunks.push(value);
+        receivedLength += value.length;
+        
+        const currentTime = Date.now();
+        const elapsed = (currentTime - startTime) / 1000;
+        const speed = receivedLength / elapsed; // bytes per second
+        
+        // 更新进度
+        if (totalSize > 0) {
+          const progress = (receivedLength / totalSize) * 100;
+          progressModal.progressBar.style.width = `${progress}%`;
+          progressModal.progressText.innerHTML = `${Math.round(progress)}% (${formatBytes(receivedLength)} / ${formatBytes(totalSize)})`;
+        } else {
+          progressModal.progressText.innerHTML = `已下载 ${formatBytes(receivedLength)}`;
+        }
+        
+        // 每500ms更新一次速度和时间预估
+        if (currentTime - lastUpdateTime > 500) {
+          lastUpdateTime = currentTime;
+          
+          progressModal.speedText.innerHTML = `下载速度: ${formatBytes(speed)}/秒`;
+          
+          if (totalSize > 0 && speed > 0) {
+            const remainingBytes = totalSize - receivedLength;
+            const remainingTime = remainingBytes / speed;
+            progressModal.timeText.innerHTML = `预计还需 ${formatTime(remainingTime)}`;
+          } else {
+            progressModal.timeText.innerHTML = '预计时间计算中...';
+          }
+        }
+      }
+      
+      if (isCancelled) return;
+      
+      // 更新为完成状态
+      progressModal.progressText.innerHTML = '准备保存文件...';
+      progressModal.speedText.innerHTML = '下载完成';
+      progressModal.timeText.innerHTML = '正在保存文件...';
+      
+      // 创建blob并下载
+      const blob = new Blob(chunks);
       const url = window.URL.createObjectURL(blob);
       
-      // 创建下载链接
       const a = document.createElement('a');
       a.href = url;
       a.download = `${data.title || '会议录制'}.mp4`;
       a.style.display = 'none';
       
-      // 强制下载
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       
-      // 清理URL对象
       window.URL.revokeObjectURL(url);
       
-      // 更新提示信息
-      downloadText.innerHTML = '下载完成！';
+      // 显示完成信息
+      progressModal.progressBar.style.width = '100%';
+      progressModal.progressText.innerHTML = '下载完成！';
+      progressModal.speedText.innerHTML = `总用时: ${formatTime((Date.now() - startTime) / 1000)}`;
+      progressModal.timeText.innerHTML = '文件已保存到下载文件夹';
+      progressModal.cancelBtn.innerHTML = '关闭';
+      progressModal.cancelBtn.style.background = '#007AFF';
+      progressModal.cancelBtn.style.color = 'white';
+      
       setTimeout(() => {
-        document.body.removeChild(downloadText);
-      }, 2000);
+        if (document.body.contains(progressModal.modal)) {
+          document.body.removeChild(progressModal.modal);
+        }
+      }, 3000);
       
     } catch (error) {
       console.error('下载失败:', error);
       
-      // 如果blob下载失败，回退到简单下载方式
-      const a = document.createElement('a');
-      a.href = data.videoUrl;
-      a.download = `${data.title || '会议录制'}.mp4`;
-      a.target = '_blank';
-      a.setAttribute('download', `${data.title || '会议录制'}.mp4`);
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      // 显示错误提示
-      const errorText = document.createElement('div');
-      errorText.innerHTML = '下载可能需要在新窗口中手动保存';
-      errorText.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(255, 0, 0, 0.8);
-        color: white;
-        padding: 12px 24px;
-        border-radius: 8px;
-        z-index: 9999;
-        font-size: 14px;
-      `;
-      document.body.appendChild(errorText);
-      setTimeout(() => {
-        document.body.removeChild(errorText);
-      }, 3000);
+      if (!isCancelled) {
+        // 如果流下载失败，回退到简单下载方式
+        document.body.removeChild(progressModal.modal);
+        
+        const a = document.createElement('a');
+        a.href = data.videoUrl;
+        a.download = `${data.title || '会议录制'}.mp4`;
+        a.target = '_blank';
+        a.setAttribute('download', `${data.title || '会议录制'}.mp4`);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // 显示错误提示
+        const errorText = document.createElement('div');
+        errorText.innerHTML = '下载可能需要在新窗口中手动保存';
+        errorText.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(255, 0, 0, 0.8);
+          color: white;
+          padding: 12px 24px;
+          border-radius: 8px;
+          z-index: 9999;
+          font-size: 14px;
+        `;
+        document.body.appendChild(errorText);
+        setTimeout(() => {
+          if (document.body.contains(errorText)) {
+            document.body.removeChild(errorText);
+          }
+        }, 3000);
+      }
     }
   };
 
