@@ -113,7 +113,7 @@ function parseMarkdownToJSX(text: string): React.ReactElement {
   return <div>{elements}</div>;
 }
 
-// 截取视频首帧的函数 - 优化版本
+// 截取视频首帧的函数 - 智能适应版本
 const captureVideoFrame = (videoUrl: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -127,15 +127,24 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
     
     let isResolved = false;
     let timeoutId: NodeJS.Timeout;
+    let attemptCount = 0;
+    let timePoints: number[] = [];
+    let capturedFrames: {time: number, dataURL: string, score: number}[] = [];
     
     // 清理函数
     const cleanup = () => {
       if (timeoutId) clearTimeout(timeoutId);
-      video.removeEventListener('loadeddata', onLoadedData);
-      video.removeEventListener('error', onError);
-      video.removeEventListener('canplay', onCanPlay);
-      video.src = '';
-      video.load();
+      try {
+        video.pause();
+        video.removeEventListener('loadedmetadata', onLoadedMetadata);
+        video.removeEventListener('seeked', onSeeked);
+        video.removeEventListener('error', onError);
+        video.removeEventListener('loadeddata', onLoadedData);
+        video.src = '';
+        video.load();
+      } catch (e) {
+        console.warn('清理视频时出错:', e);
+      }
     };
     
     // 安全的resolve函数
@@ -156,79 +165,312 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
       }
     };
     
+    // 生成动态时间点（根据视频长度）- 增加更多尝试点
+    const generateTimePoints = (duration: number) => {
+      const points: number[] = [];
+      
+      if (duration <= 0) return [0.5];
+      
+      if (duration <= 3) {
+        // 极短视频：密集采样
+        points.push(0.5);
+        points.push(duration * 0.3);
+        points.push(duration * 0.6);
+        points.push(Math.max(duration - 0.5, duration * 0.9));
+      } else if (duration <= 10) {
+        // 短视频：多点采样
+        points.push(1);                    // 1秒
+        points.push(duration * 0.2);       // 20%
+        points.push(duration * 0.4);       // 40%
+        points.push(duration * 0.6);       // 60%
+        points.push(duration * 0.8);       // 80%
+        points.push(Math.max(duration - 1, duration * 0.95)); // 接近结尾
+      } else if (duration <= 60) {
+        // 中等视频：均匀分布
+        points.push(2);                    // 2秒
+        points.push(duration * 0.15);      // 15%
+        points.push(duration * 0.3);       // 30%
+        points.push(duration * 0.5);       // 50%
+        points.push(duration * 0.7);       // 70%
+        points.push(duration * 0.85);      // 85%
+        points.push(Math.max(duration - 5, duration * 0.95)); // 接近结尾
+      } else {
+        // 长视频：关键点采样
+        points.push(5);                    // 5秒
+        points.push(15);                   // 15秒
+        points.push(duration * 0.2);       // 20%
+        points.push(duration * 0.4);       // 40%
+        points.push(duration * 0.6);       // 60%
+        points.push(duration * 0.8);       // 80%
+        points.push(Math.max(duration - 20, duration * 0.9)); // 接近结尾但不太晚
+      }
+      
+      // 确保时间点不超过视频长度，且至少间隔0.5秒
+      return points
+        .map(t => Math.max(0.5, Math.min(t, duration - 0.5)))
+        .filter((time, index, arr) => index === 0 || time - arr[index - 1] >= 0.5)
+        .sort((a, b) => a - b); // 确保按时间顺序排列
+    };
+    
+    // 检查帧是否为黑色或无效帧
+    const isBlackOrInvalidFrame = (imageData: ImageData): boolean => {
+      const data = imageData.data;
+      let brightPixelCount = 0;
+      let totalPixelCount = 0;
+      let maxBrightness = 0;
+      let hasColorVariation = false;
+      
+      // 检查像素
+      for (let i = 0; i < data.length; i += 16) { // 采样检查
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        if (r !== undefined && g !== undefined && b !== undefined) {
+          totalPixelCount++;
+          const brightness = Math.max(r, g, b); // 使用最大值而不是平均值
+          maxBrightness = Math.max(maxBrightness, brightness);
+          
+          // 如果像素亮度超过阈值，认为是有效像素
+          if (brightness > 25) {
+            brightPixelCount++;
+          }
+          
+          // 检查颜色变化
+          if (!hasColorVariation) {
+            const colorDiff = Math.max(
+              Math.abs(r - g),
+              Math.abs(g - b),
+              Math.abs(r - b)
+            );
+            if (colorDiff > 15) {
+              hasColorVariation = true;
+            }
+          }
+        }
+      }
+      
+      if (totalPixelCount === 0) return true;
+      
+      const brightPixelRatio = brightPixelCount / totalPixelCount;
+      
+      // 判断是否为黑色或无效帧
+      const isTooBlack = maxBrightness < 30; // 最亮像素都很暗
+      const isMostlyBlack = brightPixelRatio < 0.05; // 95%以上都是暗像素
+      const hasNoVariation = !hasColorVariation && maxBrightness < 50;
+      
+      return isTooBlack || isMostlyBlack || hasNoVariation;
+    };
+    
+    // 计算帧的质量分数（越高越好）
+    const calculateFrameScore = (imageData: ImageData): number => {
+      // 首先检查是否为黑色帧
+      if (isBlackOrInvalidFrame(imageData)) {
+        return 0; // 黑色帧直接给0分
+      }
+      
+      const data = imageData.data;
+      let totalBrightness = 0;
+      let pixelCount = 0;
+      let variationScore = 0;
+      let edgeCount = 0;
+      let colorfulness = 0;
+      
+      // 计算亮度和变化
+      for (let i = 0; i < data.length; i += 16) { // 采样
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        if (r !== undefined && g !== undefined && b !== undefined) {
+          const brightness = (r + g + b) / 3;
+          totalBrightness += brightness;
+          pixelCount++;
+          
+          // 计算颜色丰富度
+          const colorVar = Math.max(
+            Math.abs(r - g),
+            Math.abs(g - b),
+            Math.abs(r - b)
+          );
+          colorfulness += colorVar;
+          
+          // 检查与周围像素的差异（简单边缘检测）
+          if (i > 16) {
+            const prevR = data[i - 16];
+            const prevG = data[i - 15];
+            const prevB = data[i - 14];
+            const prevBrightness = (prevR + prevG + prevB) / 3;
+            const diff = Math.abs(brightness - prevBrightness);
+            
+            if (diff > 20) edgeCount++;
+            variationScore += Math.min(diff, 100);
+          }
+        }
+      }
+      
+      if (pixelCount === 0) return 0;
+      
+      const avgBrightness = totalBrightness / pixelCount;
+      const normalizedVariation = variationScore / pixelCount;
+      const normalizedColorfulness = colorfulness / pixelCount;
+      const edgeRatio = edgeCount / pixelCount;
+      
+      // 综合评分：
+      let score = 0;
+      
+      // 亮度分数 (0-150) - 提高权重
+      if (avgBrightness > 30 && avgBrightness < 240) {
+        score += Math.min(150, avgBrightness / 1.6);
+      }
+      
+      // 变化分数 (0-100)
+      score += Math.min(100, normalizedVariation * 2);
+      
+      // 边缘分数 (0-100)
+      score += Math.min(100, edgeRatio * 1000);
+      
+      // 颜色丰富度分数 (0-50)
+      score += Math.min(50, normalizedColorfulness * 2);
+      
+      return score;
+    };
+    
     // 尝试截取帧
-    const captureFrame = () => {
+    const captureFrame = (): void => {
       try {
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+          console.warn('视频尺寸为0，跳过此次截取');
+          tryNextTimePoint();
+          return;
+        }
+        
         // 设置画布尺寸
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 360;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         
         // 绘制视频帧
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // 简单检查是否是有效图像（不全黑）
-        const imageData = context.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
-        const data = imageData.data;
-        let hasColor = false;
+        // 获取图像数据并计算分数
+        const imageData = context.getImageData(0, 0, Math.min(300, canvas.width), Math.min(300, canvas.height));
+        const score = calculateFrameScore(imageData);
+        const dataURL = canvas.toDataURL('image/jpeg', 0.8);
         
-        // 快速检查前100个像素
-        for (let i = 0; i < data.length; i += 16) { // 每4个像素检查一次
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          
-          if (r > 20 || g > 20 || b > 20) {
-            hasColor = true;
-            break;
-          }
+        // 保存这一帧
+        capturedFrames.push({
+          time: video.currentTime,
+          dataURL: dataURL,
+          score: score
+        });
+        
+        const isBlack = score === 0;
+        console.log(`截取第${attemptCount}帧，时间: ${video.currentTime.toFixed(1)}秒，分数: ${score.toFixed(1)}${isBlack ? ' (黑色帧)' : ''}`);
+        
+        // 如果找到非黑色且高质量的帧，直接使用
+        if (score > 80 && !isBlack) {
+          console.log(`找到高质量非黑色帧，直接使用 (分数: ${score.toFixed(1)})`);
+          safeResolve(dataURL);
+          return;
         }
         
-        // 即使是黑屏也返回，因为可能就是黑色视频
-        const dataURL = canvas.toDataURL('image/jpeg', 0.7);
-        safeResolve(dataURL);
+        // 继续尝试下一个时间点
+        tryNextTimePoint();
         
       } catch (err) {
         console.error('截取帧时出错:', err);
-        safeReject(new Error('截取视频帧失败'));
+        tryNextTimePoint();
       }
     };
     
-    // 当视频数据加载完成
-    const onLoadedData = () => {
-      if (isResolved) return;
+    // 尝试下一个时间点
+    const tryNextTimePoint = () => {
+      if (attemptCount >= timePoints.length) {
+        // 所有时间点都尝试完了，选择最好的帧
+        if (capturedFrames.length > 0) {
+          // 优先选择非黑色帧
+          const nonBlackFrames = capturedFrames.filter(frame => frame.score > 0);
+          
+          let bestFrame;
+          if (nonBlackFrames.length > 0) {
+            // 有非黑色帧，选择分数最高的非黑色帧
+            bestFrame = nonBlackFrames.reduce((best, current) => 
+              current.score > best.score ? current : best
+            );
+            console.log(`使用最佳非黑色帧：时间 ${bestFrame.time.toFixed(1)}秒，分数: ${bestFrame.score.toFixed(1)}`);
+          } else {
+            // 所有帧都是黑色，选择相对最好的黑色帧
+            bestFrame = capturedFrames.reduce((best, current) => 
+              current.score > best.score ? current : best
+            );
+            console.log(`所有帧都是黑色，使用相对最佳帧：时间 ${bestFrame.time.toFixed(1)}秒，分数: ${bestFrame.score.toFixed(1)}`);
+          }
+          
+          safeResolve(bestFrame.dataURL);
+        } else {
+          console.warn('未能截取任何帧，使用默认图片');
+          safeReject(new Error('无法截取视频帧'));
+        }
+        return;
+      }
+      
+      const timePoint = timePoints[attemptCount];
+      console.log(`尝试时间点: ${timePoint.toFixed(1)}秒 (${attemptCount + 1}/${timePoints.length})`);
+      
+      attemptCount++;
       
       try {
-        // 设置到视频中间位置，通常比较稳定
-        const seekTime = Math.min(video.duration * 0.1, 3); // 取10%位置或3秒，哪个更小
-        video.currentTime = seekTime;
-        
-        // 直接尝试截取，不等待seek完成
-        setTimeout(() => {
-          if (!isResolved) {
-            captureFrame();
-          }
-        }, 200);
-        
+        video.currentTime = timePoint;
       } catch (err) {
         console.error('设置视频时间失败:', err);
-        // 如果设置时间失败，尝试直接截取当前帧
-        setTimeout(() => {
-          if (!isResolved) {
-            captureFrame();
-          }
-        }, 500);
+        tryNextTimePoint();
       }
     };
     
-    // 当视频可以播放时也尝试截取
-    const onCanPlay = () => {
+    // 当视频定位完成时触发
+    const onSeeked = () => {
       if (isResolved) return;
       
+      // 稍等一下确保帧已更新
       setTimeout(() => {
         if (!isResolved) {
           captureFrame();
         }
-      }, 100);
+      }, 300);
+    };
+    
+    // 当视频元数据加载完成时触发
+    const onLoadedMetadata = () => {
+      if (isResolved) return;
+      
+      console.log(`视频元数据加载完成，时长: ${video.duration.toFixed(1)}秒`);
+      
+      if (video.duration && video.duration > 0) {
+        // 生成动态时间点
+        timePoints = generateTimePoints(video.duration);
+        console.log(`生成时间点:`, timePoints.map(t => t.toFixed(1)));
+        
+        // 开始尝试第一个时间点
+        tryNextTimePoint();
+      } else {
+        console.error('视频时长无效');
+        safeReject(new Error('视频时长无效'));
+      }
+    };
+    
+    // 当视频数据加载完成时触发（作为备用）
+    const onLoadedData = () => {
+      if (isResolved) return;
+      
+      // 如果元数据还没加载，等待一下再尝试
+      if (attemptCount === 0 && (!video.duration || video.duration <= 0)) {
+        setTimeout(() => {
+          if (!isResolved && attemptCount === 0) {
+            console.log('作为备用方案，直接截取当前帧');
+            captureFrame();
+          }
+        }, 1500);
+      }
     };
     
     // 错误处理
@@ -241,19 +483,42 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
     video.crossOrigin = 'anonymous';
     video.muted = true;
     video.preload = 'metadata';
-    video.playsInline = true; // 防止iOS全屏播放
+    video.playsInline = true;
     
     // 添加事件监听器
-    video.addEventListener('loadeddata', onLoadedData);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('seeked', onSeeked);
     video.addEventListener('error', onError);
-    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('loadeddata', onLoadedData);
     
-    // 设置较长的超时时间
+    // 设置超时时间
     timeoutId = setTimeout(() => {
-      safeReject(new Error('视频截取超时'));
-    }, 30000); // 增加到30秒
+      if (capturedFrames.length > 0) {
+        // 如果已经有一些帧，优先选择非黑色帧
+        const nonBlackFrames = capturedFrames.filter(frame => frame.score > 0);
+        
+        let bestFrame;
+        if (nonBlackFrames.length > 0) {
+          bestFrame = nonBlackFrames.reduce((best, current) => 
+            current.score > best.score ? current : best
+          );
+          console.log(`超时但有非黑色帧，使用最佳非黑色帧 (分数: ${bestFrame.score.toFixed(1)})`);
+        } else {
+          bestFrame = capturedFrames.reduce((best, current) => 
+            current.score > best.score ? current : best
+          );
+          console.log(`超时且只有黑色帧，使用相对最佳帧 (分数: ${bestFrame.score.toFixed(1)})`);
+        }
+        
+        safeResolve(bestFrame.dataURL);
+      } else {
+        console.error('视频截取超时且无可用帧');
+        safeReject(new Error('视频截取超时'));
+      }
+    }, 30000); // 30秒超时
     
     // 开始加载视频
+    console.log('开始加载视频:', videoUrl);
     video.src = videoUrl;
     video.load();
   });
