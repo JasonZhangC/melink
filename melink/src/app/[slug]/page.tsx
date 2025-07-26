@@ -24,7 +24,7 @@ async function fetchTextContent(url: string): Promise<string> {
     }
 }
 
-export default function SharePage({ params }: { params: { slug: string } }) {
+export default function SharePage({ params }: { params: Promise<{ slug: string }> }) {
   const [data, setData] = useState<MeetingData | null>(null);
   const [transcriptionContent, setTranscriptionContent] = useState<string>('');
   const [summaryContent, setSummaryContent] = useState<string>('');
@@ -38,7 +38,11 @@ export default function SharePage({ params }: { params: { slug: string } }) {
   useEffect(() => {
     async function loadData() {
       try {
-        const response = await fetch(`/api/data/${params.slug}`);
+        // 解析异步的 params
+        const resolvedParams = await params;
+        const currentSlug = resolvedParams.slug;
+        
+        const response = await fetch(`/api/data/${currentSlug}`);
         
         if (!response.ok) {
           setError(response.status === 404 ? '页面未找到' : `HTTP错误! 状态: ${response.status}`);
@@ -65,7 +69,7 @@ export default function SharePage({ params }: { params: { slug: string } }) {
     }
     
     loadData();
-  }, [params.slug]);
+  }, [params]);
 
   const handleShare = async () => {
     const shareData = {
