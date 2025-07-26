@@ -113,161 +113,7 @@ function parseMarkdownToJSX(text: string): React.ReactElement {
   return <div>{elements}</div>;
 }
 
-// 优化后的简化视频截帧函数
-const captureVideoFrame = (videoUrl: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    
-    if (!context) {
-      reject(new Error('无法获取canvas上下文'));
-      return;
-    }
-    
-    let isResolved = false;
-    let timeoutId: NodeJS.Timeout;
-    
-    // 清理函数
-    const cleanup = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      try {
-        video.pause();
-        video.removeEventListener('loadedmetadata', onLoadedMetadata);
-        video.removeEventListener('seeked', onSeeked);
-        video.removeEventListener('error', onError);
-        video.src = '';
-        video.load();
-      } catch (e) {
-        console.warn('清理视频时出错:', e);
-      }
-    };
-    
-    // 安全的resolve函数
-    const safeResolve = (value: string) => {
-      if (!isResolved) {
-        isResolved = true;
-        cleanup();
-        resolve(value);
-      }
-    };
-    
-    // 安全的reject函数
-    const safeReject = (error: Error) => {
-      if (!isResolved) {
-        isResolved = true;
-        cleanup();
-        reject(error);
-      }
-    };
-    
-    // 简单的检查帧是否为黑色
-    const isBlackFrame = (imageData: ImageData): boolean => {
-      const data = imageData.data;
-      let brightPixelCount = 0;
-      let totalPixels = 0;
-      
-      for (let i = 0; i < data.length; i += 16) { // 采样检查
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        
-        if (r !== undefined && g !== undefined && b !== undefined) {
-          totalPixels++;
-          const brightness = (r + g + b) / 3;
-          if (brightness > 30) brightPixelCount++;
-        }
-      }
-      
-      return totalPixels === 0 || (brightPixelCount / totalPixels) < 0.1;
-    };
-    
-    // 截取帧
-    const captureFrame = (timePoint: number = 2): void => {
-      try {
-        video.currentTime = timePoint;
-      } catch (err) {
-        console.error('设置视频时间失败:', err);
-        safeReject(new Error('设置视频时间失败'));
-      }
-    };
-    
-    // 当视频定位完成时触发
-    const onSeeked = () => {
-      if (isResolved) return;
-      
-      setTimeout(() => {
-        if (isResolved) return;
-        
-        try {
-          if (video.videoWidth === 0 || video.videoHeight === 0) {
-            safeReject(new Error('视频尺寸无效'));
-            return;
-          }
-          
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // 简单检查是否为黑色帧
-          const imageData = context.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
-          
-          if (isBlackFrame(imageData) && video.currentTime < 10) {
-            // 如果是黑色帧且时间还早，尝试稍后的时间点
-            captureFrame(video.currentTime + 3);
-            return;
-          }
-          
-          const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-          safeResolve(dataURL);
-          
-        } catch (err) {
-          console.error('截取帧时出错:', err);
-          safeReject(new Error('截取视频帧失败'));
-        }
-      }, 200);
-    };
-    
-    // 当视频元数据加载完成时触发
-    const onLoadedMetadata = () => {
-      if (isResolved) return;
-      
-      if (video.duration && video.duration > 0) {
-        // 选择一个合适的起始时间点
-        const startTime = Math.min(2, video.duration * 0.1);
-        captureFrame(startTime);
-      } else {
-        safeReject(new Error('视频时长无效'));
-      }
-    };
-    
-    // 错误处理
-    const onError = (e: any) => {
-      console.error('视频加载错误:', e);
-      safeReject(new Error('视频加载失败'));
-    };
-    
-    // 设置视频属性
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.preload = 'metadata';
-    video.playsInline = true;
-    
-    // 添加事件监听器
-    video.addEventListener('loadedmetadata', onLoadedMetadata);
-    video.addEventListener('seeked', onSeeked);
-    video.addEventListener('error', onError);
-    
-    // 设置较短的超时时间
-    timeoutId = setTimeout(() => {
-      safeReject(new Error('视频截取超时'));
-    }, 8000); // 8秒超时，之前是30秒
-    
-    // 开始加载视频
-    video.src = videoUrl;
-    video.load();
-  });
-};
+
 
 export default function SharePage({ params }: { params: Promise<{ slug: string }> }) {
   const [data, setData] = useState<MeetingData | null>(null);
@@ -275,8 +121,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   const [summaryContent, setSummaryContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [videoThumbnail, setVideoThumbnail] = useState<string>('/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png'); // 默认图片
-  const [thumbnailLoading, setThumbnailLoading] = useState(false);
   
   // 控制内容折叠的状态
   const [isTranscriptionCollapsed, setIsTranscriptionCollapsed] = useState(true);
@@ -358,26 +202,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
     loadData();
   }, [params]);
 
-  // 视频截帧 - 优化：异步后台加载，不阻塞页面显示
-  useEffect(() => {
-    if (!data?.videoUrl) return;
-    
-    // 延迟执行视频截帧，让页面先显示
-    const timeoutId = setTimeout(async () => {
-      setThumbnailLoading(true);
-      try {
-        const thumbnail = await captureVideoFrame(data.videoUrl);
-        setVideoThumbnail(thumbnail);
-      } catch (err) {
-        console.warn('截取视频首帧失败，使用默认图片:', err);
-        // 保持默认图片，不做任何改变
-      } finally {
-        setThumbnailLoading(false);
-      }
-    }, 500); // 延迟500ms执行
 
-    return () => clearTimeout(timeoutId);
-  }, [data?.videoUrl]);
 
   const handleShare = async () => {
     setShowQRCode(true);
