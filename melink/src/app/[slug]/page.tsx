@@ -129,7 +129,7 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
     video.muted = true; // 静音以避免自动播放限制
     video.preload = 'metadata';
     
-    let attemptTimes = [2, 5, 8, 1, 10]; // 尝试多个时间点（秒）
+    const attemptTimes = [2, 5, 8, 1, 10]; // 尝试多个时间点（秒）
     let currentAttempt = 0;
     
     const attemptCapture = () => {
@@ -367,7 +367,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
             </div>
             <div className="card-image">
               {videoThumbnail ? (
-                <img 
+                <Image 
                   src={videoThumbnail} 
                   alt="Video Thumbnail" 
                   width={86} 
@@ -515,6 +515,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
               borderRadius: '12px',
               display: 'inline-block'
             }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
                 alt="分享二维码"
