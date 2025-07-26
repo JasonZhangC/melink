@@ -113,7 +113,7 @@ function parseMarkdownToJSX(text: string): React.ReactElement {
   return <div>{elements}</div>;
 }
 
-// 截取视频首帧的函数
+// 截取视频首帧的函数 - 优化版本
 const captureVideoFrame = (videoUrl: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -125,97 +125,135 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
       return;
     }
     
-    video.crossOrigin = 'anonymous';
-    video.muted = true; // 静音以避免自动播放限制
-    video.preload = 'metadata';
+    let isResolved = false;
+    let timeoutId: NodeJS.Timeout;
     
-    const attemptTimes = [2, 5, 8, 1, 10]; // 尝试多个时间点（秒）
-    let currentAttempt = 0;
-    
-    const attemptCapture = () => {
-      if (currentAttempt >= attemptTimes.length) {
-        reject(new Error('无法获取有效的视频帧'));
-        return;
-      }
-      
-      video.currentTime = attemptTimes[currentAttempt];
-      currentAttempt++;
+    // 清理函数
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      video.removeEventListener('loadeddata', onLoadedData);
+      video.removeEventListener('error', onError);
+      video.removeEventListener('canplay', onCanPlay);
+      video.src = '';
+      video.load();
     };
     
-    video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      
-      // 确保视频有足够长度
-      if (video.duration > 0) {
-        attemptCapture();
-      } else {
-        setTimeout(() => attemptCapture(), 500);
+    // 安全的resolve函数
+    const safeResolve = (value: string) => {
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        resolve(value);
       }
     };
     
-    video.onseeked = () => {
-      // 稍等一下确保帧渲染完成
+    // 安全的reject函数
+    const safeReject = (error: Error) => {
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        reject(error);
+      }
+    };
+    
+    // 尝试截取帧
+    const captureFrame = () => {
+      try {
+        // 设置画布尺寸
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
+        
+        // 绘制视频帧
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // 简单检查是否是有效图像（不全黑）
+        const imageData = context.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
+        const data = imageData.data;
+        let hasColor = false;
+        
+        // 快速检查前100个像素
+        for (let i = 0; i < data.length; i += 16) { // 每4个像素检查一次
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          
+          if (r > 20 || g > 20 || b > 20) {
+            hasColor = true;
+            break;
+          }
+        }
+        
+        // 即使是黑屏也返回，因为可能就是黑色视频
+        const dataURL = canvas.toDataURL('image/jpeg', 0.7);
+        safeResolve(dataURL);
+        
+      } catch (err) {
+        console.error('截取帧时出错:', err);
+        safeReject(new Error('截取视频帧失败'));
+      }
+    };
+    
+    // 当视频数据加载完成
+    const onLoadedData = () => {
+      if (isResolved) return;
+      
+      try {
+        // 设置到视频中间位置，通常比较稳定
+        const seekTime = Math.min(video.duration * 0.1, 3); // 取10%位置或3秒，哪个更小
+        video.currentTime = seekTime;
+        
+        // 直接尝试截取，不等待seek完成
+        setTimeout(() => {
+          if (!isResolved) {
+            captureFrame();
+          }
+        }, 200);
+        
+      } catch (err) {
+        console.error('设置视频时间失败:', err);
+        // 如果设置时间失败，尝试直接截取当前帧
+        setTimeout(() => {
+          if (!isResolved) {
+            captureFrame();
+          }
+        }, 500);
+      }
+    };
+    
+    // 当视频可以播放时也尝试截取
+    const onCanPlay = () => {
+      if (isResolved) return;
+      
       setTimeout(() => {
-        try {
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // 检查是否为纯黑图片
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const data = imageData.data;
-          let isBlack = true;
-          
-          // 检查前1000个像素点是否都是黑色
-          for (let i = 0; i < Math.min(1000 * 4, data.length); i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            
-            // 如果RGB值大于30，认为不是纯黑
-            if (r > 30 || g > 30 || b > 30) {
-              isBlack = false;
-              break;
-            }
-          }
-          
-          if (isBlack && currentAttempt < attemptTimes.length) {
-            // 如果是黑屏，尝试下一个时间点
-            console.log(`时间点 ${attemptTimes[currentAttempt-1]}s 为黑屏，尝试下一个时间点`);
-            attemptCapture();
-          } else {
-            // 不是黑屏或者已经尝试完所有时间点
-            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-            resolve(dataURL);
-          }
-        } catch (err) {
-          console.error('截取帧时出错:', err);
-          if (currentAttempt < attemptTimes.length) {
-            attemptCapture();
-          } else {
-            reject(err);
-          }
+        if (!isResolved) {
+          captureFrame();
         }
       }, 100);
     };
     
-    video.onerror = (e) => {
+    // 错误处理
+    const onError = (e: any) => {
       console.error('视频加载错误:', e);
-      reject(new Error('视频加载失败'));
+      safeReject(new Error('视频加载失败'));
     };
     
-    video.ontimeupdate = () => {
-      // 当时间更新时，确保视频已经寻址到正确位置
-    };
+    // 设置视频属性
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.preload = 'metadata';
+    video.playsInline = true; // 防止iOS全屏播放
     
-    // 设置超时
-    const timeout = setTimeout(() => {
-      reject(new Error('视频截取超时'));
-    }, 15000);
+    // 添加事件监听器
+    video.addEventListener('loadeddata', onLoadedData);
+    video.addEventListener('error', onError);
+    video.addEventListener('canplay', onCanPlay);
     
-    video.addEventListener('loadeddata', () => {
-      clearTimeout(timeout);
-    });
+    // 设置较长的超时时间
+    timeoutId = setTimeout(() => {
+      safeReject(new Error('视频截取超时'));
+    }, 30000); // 增加到30秒
     
+    // 开始加载视频
     video.src = videoUrl;
     video.load();
   });
@@ -235,6 +273,38 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   
   // 控制二维码弹窗显示
   const [showQRCode, setShowQRCode] = useState(false);
+  
+  // 视口高度状态
+  const [viewportHeight, setViewportHeight] = useState(0);
+
+  // 监听窗口大小变化
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      setViewportHeight(window.innerHeight);
+    };
+
+    // 初始设置
+    updateViewportHeight();
+
+    // 添加事件监听器
+    window.addEventListener('resize', updateViewportHeight);
+    window.addEventListener('orientationchange', updateViewportHeight);
+
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('resize', updateViewportHeight);
+      window.removeEventListener('orientationchange', updateViewportHeight);
+    };
+  }, []);
+
+  // 计算动态高度
+  const calculateContentHeight = () => {
+    if (viewportHeight === 0) return '300px';
+    
+    // 展开时占用屏幕高度的80%，但最少200px，最多600px
+    const expandedHeight = Math.max(200, Math.min(600, viewportHeight * 0.8));
+    return `${expandedHeight}px`;
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -343,9 +413,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 <h2 className="card-title">语音转录</h2>
               </div>
               <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`} style={{
-                maxHeight: isTranscriptionCollapsed ? '0' : '300px',
+                maxHeight: isTranscriptionCollapsed ? '0' : calculateContentHeight(),
                 overflowY: isTranscriptionCollapsed ? 'hidden' : 'auto',
-                transition: 'max-height 0.3s ease-in-out'
+                transition: 'max-height 0.3s ease-in-out, padding 0.3s ease-in-out',
+                padding: isTranscriptionCollapsed ? '0' : '8px 0'
               }}>
                 <div className="card-description">
                   <div className="location-icon">
@@ -360,7 +431,8 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
                     scrollbarWidth: 'thin',
-                    scrollbarColor: '#ccc transparent'
+                    scrollbarColor: '#ccc transparent',
+                    color: '#555'
                   }}>{transcriptionContent}</pre>
                 </div>
               </div>
@@ -392,9 +464,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 <h2 className="card-title">会议纪要</h2>
               </div>
               <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`} style={{
-                maxHeight: isSummaryCollapsed ? '0' : '300px',
+                maxHeight: isSummaryCollapsed ? '0' : calculateContentHeight(),
                 overflowY: isSummaryCollapsed ? 'hidden' : 'auto',
-                transition: 'max-height 0.3s ease-in-out'
+                transition: 'max-height 0.3s ease-in-out, padding 0.3s ease-in-out',
+                padding: isSummaryCollapsed ? '0' : '8px 0'
               }}>
                 <div className="card-description">
                   <div className="meeting-icon">
@@ -402,7 +475,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                   </div>
                   <div className="description-text markdown-content" style={{
                     fontFamily: 'inherit',
-                    fontSize: '14px',
+                    fontSize: viewportHeight < 600 ? '13px' : '14px', // 小屏幕使用更小字体
                     lineHeight: '1.6',
                     color: '#333',
                     padding: '0 8px 8px 0',
