@@ -113,7 +113,7 @@ function parseMarkdownToJSX(text: string): React.ReactElement {
   return <div>{elements}</div>;
 }
 
-// 截取视频首帧的函数 - 智能适应版本
+// 优化后的简化视频截帧函数
 const captureVideoFrame = (videoUrl: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -127,9 +127,6 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
     
     let isResolved = false;
     let timeoutId: NodeJS.Timeout;
-    let attemptCount = 0;
-    let timePoints: number[] = [];
-    let capturedFrames: {time: number, dataURL: string, score: number}[] = [];
     
     // 清理函数
     const cleanup = () => {
@@ -139,7 +136,6 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
         video.removeEventListener('loadedmetadata', onLoadedMetadata);
         video.removeEventListener('seeked', onSeeked);
         video.removeEventListener('error', onError);
-        video.removeEventListener('loadeddata', onLoadedData);
         video.src = '';
         video.load();
       } catch (e) {
@@ -165,265 +161,34 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
       }
     };
     
-    // 生成动态时间点（根据视频长度）- 增加更多尝试点
-    const generateTimePoints = (duration: number) => {
-      const points: number[] = [];
-      
-      if (duration <= 0) return [0.5];
-      
-      if (duration <= 3) {
-        // 极短视频：密集采样
-        points.push(0.5);
-        points.push(duration * 0.3);
-        points.push(duration * 0.6);
-        points.push(Math.max(duration - 0.5, duration * 0.9));
-      } else if (duration <= 10) {
-        // 短视频：多点采样
-        points.push(1);                    // 1秒
-        points.push(duration * 0.2);       // 20%
-        points.push(duration * 0.4);       // 40%
-        points.push(duration * 0.6);       // 60%
-        points.push(duration * 0.8);       // 80%
-        points.push(Math.max(duration - 1, duration * 0.95)); // 接近结尾
-      } else if (duration <= 60) {
-        // 中等视频：均匀分布
-        points.push(2);                    // 2秒
-        points.push(duration * 0.15);      // 15%
-        points.push(duration * 0.3);       // 30%
-        points.push(duration * 0.5);       // 50%
-        points.push(duration * 0.7);       // 70%
-        points.push(duration * 0.85);      // 85%
-        points.push(Math.max(duration - 5, duration * 0.95)); // 接近结尾
-      } else {
-        // 长视频：关键点采样
-        points.push(5);                    // 5秒
-        points.push(15);                   // 15秒
-        points.push(duration * 0.2);       // 20%
-        points.push(duration * 0.4);       // 40%
-        points.push(duration * 0.6);       // 60%
-        points.push(duration * 0.8);       // 80%
-        points.push(Math.max(duration - 20, duration * 0.9)); // 接近结尾但不太晚
-      }
-      
-      // 确保时间点不超过视频长度，且至少间隔0.5秒
-      return points
-        .map(t => Math.max(0.5, Math.min(t, duration - 0.5)))
-        .filter((time, index, arr) => index === 0 || time - arr[index - 1] >= 0.5)
-        .sort((a, b) => a - b); // 确保按时间顺序排列
-    };
-    
-    // 检查帧是否为黑色或无效帧
-    const isBlackOrInvalidFrame = (imageData: ImageData): boolean => {
+    // 简单的检查帧是否为黑色
+    const isBlackFrame = (imageData: ImageData): boolean => {
       const data = imageData.data;
       let brightPixelCount = 0;
-      let totalPixelCount = 0;
-      let maxBrightness = 0;
-      let hasColorVariation = false;
+      let totalPixels = 0;
       
-      // 检查像素
       for (let i = 0; i < data.length; i += 16) { // 采样检查
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
         
         if (r !== undefined && g !== undefined && b !== undefined) {
-          totalPixelCount++;
-          const brightness = Math.max(r, g, b); // 使用最大值而不是平均值
-          maxBrightness = Math.max(maxBrightness, brightness);
-          
-          // 如果像素亮度超过阈值，认为是有效像素
-          if (brightness > 25) {
-            brightPixelCount++;
-          }
-          
-          // 检查颜色变化
-          if (!hasColorVariation) {
-            const colorDiff = Math.max(
-              Math.abs(r - g),
-              Math.abs(g - b),
-              Math.abs(r - b)
-            );
-            if (colorDiff > 15) {
-              hasColorVariation = true;
-            }
-          }
-        }
-      }
-      
-      if (totalPixelCount === 0) return true;
-      
-      const brightPixelRatio = brightPixelCount / totalPixelCount;
-      
-      // 判断是否为黑色或无效帧
-      const isTooBlack = maxBrightness < 30; // 最亮像素都很暗
-      const isMostlyBlack = brightPixelRatio < 0.05; // 95%以上都是暗像素
-      const hasNoVariation = !hasColorVariation && maxBrightness < 50;
-      
-      return isTooBlack || isMostlyBlack || hasNoVariation;
-    };
-    
-    // 计算帧的质量分数（越高越好）
-    const calculateFrameScore = (imageData: ImageData): number => {
-      // 首先检查是否为黑色帧
-      if (isBlackOrInvalidFrame(imageData)) {
-        return 0; // 黑色帧直接给0分
-      }
-      
-      const data = imageData.data;
-      let totalBrightness = 0;
-      let pixelCount = 0;
-      let variationScore = 0;
-      let edgeCount = 0;
-      let colorfulness = 0;
-      
-      // 计算亮度和变化
-      for (let i = 0; i < data.length; i += 16) { // 采样
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        
-        if (r !== undefined && g !== undefined && b !== undefined) {
+          totalPixels++;
           const brightness = (r + g + b) / 3;
-          totalBrightness += brightness;
-          pixelCount++;
-          
-          // 计算颜色丰富度
-          const colorVar = Math.max(
-            Math.abs(r - g),
-            Math.abs(g - b),
-            Math.abs(r - b)
-          );
-          colorfulness += colorVar;
-          
-          // 检查与周围像素的差异（简单边缘检测）
-          if (i > 16) {
-            const prevR = data[i - 16];
-            const prevG = data[i - 15];
-            const prevB = data[i - 14];
-            const prevBrightness = (prevR + prevG + prevB) / 3;
-            const diff = Math.abs(brightness - prevBrightness);
-            
-            if (diff > 20) edgeCount++;
-            variationScore += Math.min(diff, 100);
-          }
+          if (brightness > 30) brightPixelCount++;
         }
       }
       
-      if (pixelCount === 0) return 0;
-      
-      const avgBrightness = totalBrightness / pixelCount;
-      const normalizedVariation = variationScore / pixelCount;
-      const normalizedColorfulness = colorfulness / pixelCount;
-      const edgeRatio = edgeCount / pixelCount;
-      
-      // 综合评分：
-      let score = 0;
-      
-      // 亮度分数 (0-150) - 提高权重
-      if (avgBrightness > 30 && avgBrightness < 240) {
-        score += Math.min(150, avgBrightness / 1.6);
-      }
-      
-      // 变化分数 (0-100)
-      score += Math.min(100, normalizedVariation * 2);
-      
-      // 边缘分数 (0-100)
-      score += Math.min(100, edgeRatio * 1000);
-      
-      // 颜色丰富度分数 (0-50)
-      score += Math.min(50, normalizedColorfulness * 2);
-      
-      return score;
+      return totalPixels === 0 || (brightPixelCount / totalPixels) < 0.1;
     };
     
-    // 尝试截取帧
-    const captureFrame = (): void => {
-      try {
-        if (video.videoWidth === 0 || video.videoHeight === 0) {
-          console.warn('视频尺寸为0，跳过此次截取');
-          tryNextTimePoint();
-          return;
-        }
-        
-        // 设置画布尺寸
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        // 绘制视频帧
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // 获取图像数据并计算分数
-        const imageData = context.getImageData(0, 0, Math.min(300, canvas.width), Math.min(300, canvas.height));
-        const score = calculateFrameScore(imageData);
-        const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-        
-        // 保存这一帧
-        capturedFrames.push({
-          time: video.currentTime,
-          dataURL: dataURL,
-          score: score
-        });
-        
-        const isBlack = score === 0;
-        console.log(`截取第${attemptCount}帧，时间: ${video.currentTime.toFixed(1)}秒，分数: ${score.toFixed(1)}${isBlack ? ' (黑色帧)' : ''}`);
-        
-        // 如果找到非黑色且高质量的帧，直接使用
-        if (score > 80 && !isBlack) {
-          console.log(`找到高质量非黑色帧，直接使用 (分数: ${score.toFixed(1)})`);
-          safeResolve(dataURL);
-          return;
-        }
-        
-        // 继续尝试下一个时间点
-        tryNextTimePoint();
-        
-      } catch (err) {
-        console.error('截取帧时出错:', err);
-        tryNextTimePoint();
-      }
-    };
-    
-    // 尝试下一个时间点
-    const tryNextTimePoint = () => {
-      if (attemptCount >= timePoints.length) {
-        // 所有时间点都尝试完了，选择最好的帧
-        if (capturedFrames.length > 0) {
-          // 优先选择非黑色帧
-          const nonBlackFrames = capturedFrames.filter(frame => frame.score > 0);
-          
-          let bestFrame;
-          if (nonBlackFrames.length > 0) {
-            // 有非黑色帧，选择分数最高的非黑色帧
-            bestFrame = nonBlackFrames.reduce((best, current) => 
-              current.score > best.score ? current : best
-            );
-            console.log(`使用最佳非黑色帧：时间 ${bestFrame.time.toFixed(1)}秒，分数: ${bestFrame.score.toFixed(1)}`);
-          } else {
-            // 所有帧都是黑色，选择相对最好的黑色帧
-            bestFrame = capturedFrames.reduce((best, current) => 
-              current.score > best.score ? current : best
-            );
-            console.log(`所有帧都是黑色，使用相对最佳帧：时间 ${bestFrame.time.toFixed(1)}秒，分数: ${bestFrame.score.toFixed(1)}`);
-          }
-          
-          safeResolve(bestFrame.dataURL);
-        } else {
-          console.warn('未能截取任何帧，使用默认图片');
-          safeReject(new Error('无法截取视频帧'));
-        }
-        return;
-      }
-      
-      const timePoint = timePoints[attemptCount];
-      console.log(`尝试时间点: ${timePoint.toFixed(1)}秒 (${attemptCount + 1}/${timePoints.length})`);
-      
-      attemptCount++;
-      
+    // 截取帧
+    const captureFrame = (timePoint: number = 2): void => {
       try {
         video.currentTime = timePoint;
       } catch (err) {
         console.error('设置视频时间失败:', err);
-        tryNextTimePoint();
+        safeReject(new Error('设置视频时间失败'));
       }
     };
     
@@ -431,45 +196,48 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
     const onSeeked = () => {
       if (isResolved) return;
       
-      // 稍等一下确保帧已更新
       setTimeout(() => {
-        if (!isResolved) {
-          captureFrame();
+        if (isResolved) return;
+        
+        try {
+          if (video.videoWidth === 0 || video.videoHeight === 0) {
+            safeReject(new Error('视频尺寸无效'));
+            return;
+          }
+          
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // 简单检查是否为黑色帧
+          const imageData = context.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
+          
+          if (isBlackFrame(imageData) && video.currentTime < 10) {
+            // 如果是黑色帧且时间还早，尝试稍后的时间点
+            captureFrame(video.currentTime + 3);
+            return;
+          }
+          
+          const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+          safeResolve(dataURL);
+          
+        } catch (err) {
+          console.error('截取帧时出错:', err);
+          safeReject(new Error('截取视频帧失败'));
         }
-      }, 300);
+      }, 200);
     };
     
     // 当视频元数据加载完成时触发
     const onLoadedMetadata = () => {
       if (isResolved) return;
       
-      console.log(`视频元数据加载完成，时长: ${video.duration.toFixed(1)}秒`);
-      
       if (video.duration && video.duration > 0) {
-        // 生成动态时间点
-        timePoints = generateTimePoints(video.duration);
-        console.log(`生成时间点:`, timePoints.map(t => t.toFixed(1)));
-        
-        // 开始尝试第一个时间点
-        tryNextTimePoint();
+        // 选择一个合适的起始时间点
+        const startTime = Math.min(2, video.duration * 0.1);
+        captureFrame(startTime);
       } else {
-        console.error('视频时长无效');
         safeReject(new Error('视频时长无效'));
-      }
-    };
-    
-    // 当视频数据加载完成时触发（作为备用）
-    const onLoadedData = () => {
-      if (isResolved) return;
-      
-      // 如果元数据还没加载，等待一下再尝试
-      if (attemptCount === 0 && (!video.duration || video.duration <= 0)) {
-        setTimeout(() => {
-          if (!isResolved && attemptCount === 0) {
-            console.log('作为备用方案，直接截取当前帧');
-            captureFrame();
-          }
-        }, 1500);
       }
     };
     
@@ -489,36 +257,13 @@ const captureVideoFrame = (videoUrl: string): Promise<string> => {
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('error', onError);
-    video.addEventListener('loadeddata', onLoadedData);
     
-    // 设置超时时间
+    // 设置较短的超时时间
     timeoutId = setTimeout(() => {
-      if (capturedFrames.length > 0) {
-        // 如果已经有一些帧，优先选择非黑色帧
-        const nonBlackFrames = capturedFrames.filter(frame => frame.score > 0);
-        
-        let bestFrame;
-        if (nonBlackFrames.length > 0) {
-          bestFrame = nonBlackFrames.reduce((best, current) => 
-            current.score > best.score ? current : best
-          );
-          console.log(`超时但有非黑色帧，使用最佳非黑色帧 (分数: ${bestFrame.score.toFixed(1)})`);
-        } else {
-          bestFrame = capturedFrames.reduce((best, current) => 
-            current.score > best.score ? current : best
-          );
-          console.log(`超时且只有黑色帧，使用相对最佳帧 (分数: ${bestFrame.score.toFixed(1)})`);
-        }
-        
-        safeResolve(bestFrame.dataURL);
-      } else {
-        console.error('视频截取超时且无可用帧');
-        safeReject(new Error('视频截取超时'));
-      }
-    }, 30000); // 30秒超时
+      safeReject(new Error('视频截取超时'));
+    }, 8000); // 8秒超时，之前是30秒
     
     // 开始加载视频
-    console.log('开始加载视频:', videoUrl);
     video.src = videoUrl;
     video.load();
   });
@@ -530,7 +275,8 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   const [summaryContent, setSummaryContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [videoThumbnail, setVideoThumbnail] = useState<string>('');
+  const [videoThumbnail, setVideoThumbnail] = useState<string>('/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png'); // 默认图片
+  const [thumbnailLoading, setThumbnailLoading] = useState(false);
   
   // 控制内容折叠的状态
   const [isTranscriptionCollapsed, setIsTranscriptionCollapsed] = useState(true);
@@ -571,6 +317,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
     return `${expandedHeight}px`;
   };
 
+  // 主要数据加载 - 优化：快速显示基本内容
   useEffect(() => {
     async function loadData() {
       try {
@@ -588,7 +335,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         const meetingData: MeetingData = await response.json();
         setData(meetingData);
         
-        // 获取文本内容
+        // 快速显示页面，然后异步加载文本内容
+        setLoading(false);
+        
+        // 异步获取文本内容
         const [transcription, summary] = await Promise.all([
           fetchTextContent(meetingData.transcriptionUrl),
           fetchTextContent(meetingData.summaryUrl)
@@ -596,16 +346,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         
         setTranscriptionContent(transcription);
         setSummaryContent(summary);
-        
-        // 截取视频首帧
-        try {
-          const thumbnail = await captureVideoFrame(meetingData.videoUrl);
-          setVideoThumbnail(thumbnail);
-        } catch (err) {
-          console.error('截取视频首帧失败:', err);
-          // 如果截取失败，使用默认图片
-          setVideoThumbnail('/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png');
-        }
         
       } catch (err) {
         console.error('加载数据失败:', err);
@@ -617,6 +357,27 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
     
     loadData();
   }, [params]);
+
+  // 视频截帧 - 优化：异步后台加载，不阻塞页面显示
+  useEffect(() => {
+    if (!data?.videoUrl) return;
+    
+    // 延迟执行视频截帧，让页面先显示
+    const timeoutId = setTimeout(async () => {
+      setThumbnailLoading(true);
+      try {
+        const thumbnail = await captureVideoFrame(data.videoUrl);
+        setVideoThumbnail(thumbnail);
+      } catch (err) {
+        console.warn('截取视频首帧失败，使用默认图片:', err);
+        // 保持默认图片，不做任何改变
+      } finally {
+        setThumbnailLoading(false);
+      }
+    }, 500); // 延迟500ms执行
+
+    return () => clearTimeout(timeoutId);
+  }, [data?.videoUrl]);
 
   const handleShare = async () => {
     setShowQRCode(true);
@@ -635,8 +396,23 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   if (loading) {
     return (
       <div className="container">
-        <div style={{ textAlign: 'center', paddingTop: '50%' }}>
-          <p>加载中...</p>
+        <div style={{ textAlign: 'center', paddingTop: '30%' }}>
+          <div style={{ 
+            width: '40px', 
+            height: '40px', 
+            border: '3px solid #f3f3f3',
+            borderTop: '3px solid #007AFF',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }}></div>
+          <p style={{ color: '#666', fontSize: '16px' }}>加载中...</p>
+          <style jsx>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
         </div>
       </div>
     );
@@ -645,9 +421,9 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   if (error || !data) {
     return (
       <div className="container">
-        <div style={{ textAlign: 'center', paddingTop: '50%' }}>
-          <h1>{error || '页面未找到'}</h1>
-          <p>请检查链接是否正确或联系管理员。</p>
+        <div style={{ textAlign: 'center', paddingTop: '30%' }}>
+          <h1 style={{ color: '#ff4444', marginBottom: '16px' }}>{error || '页面未找到'}</h1>
+          <p style={{ color: '#666' }}>请检查链接是否正确或联系管理员。</p>
         </div>
       </div>
     );
@@ -656,7 +432,13 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   return (
     <div className="container">
       <div className="nav-bar">
-        <div className="publisher">发布者：</div>
+        <div className="publisher">{data?.createdAt ? new Date(data.createdAt).toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : '未知'}</div>
       </div>
 
       <div className="avatar">
@@ -695,18 +477,29 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 padding: isTranscriptionCollapsed ? '0' : '2px 0'
               }}>
                 <div className="card-description" style={{ marginTop: '0' }}>
-                  <pre className="description-text" style={{
-                    margin: 0,
-                    padding: '2px 0 8px 0',
-                    fontFamily: 'inherit',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: '#ccc transparent',
-                    color: '#555'
-                  }}>{transcriptionContent}</pre>
+                  {transcriptionContent ? (
+                    <pre className="description-text" style={{
+                      margin: 0,
+                      padding: '2px 0 8px 0',
+                      fontFamily: 'inherit',
+                      fontSize: '14px',
+                      lineHeight: '1.6',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: '#ccc transparent',
+                      color: '#555'
+                    }}>{transcriptionContent}</pre>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      color: '#999', 
+                      padding: '20px',
+                      fontSize: '14px'
+                    }}>
+                      正在加载转录内容...
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -738,17 +531,28 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 padding: isSummaryCollapsed ? '0' : '2px 0'
               }}>
                 <div className="card-description" style={{ marginTop: '0' }}>
-                  <div className="description-text markdown-content" style={{
-                    fontFamily: 'inherit',
-                    fontSize: viewportHeight < 600 ? '13px' : '14px', // 小屏幕使用更小字体
-                    lineHeight: '1.6',
-                    color: '#333',
-                    padding: '2px 0 8px 0',
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: '#ccc transparent'
-                  }}>
-                    {parseMarkdownToJSX(summaryContent)}
-                  </div>
+                  {summaryContent ? (
+                    <div className="description-text markdown-content" style={{
+                      fontFamily: 'inherit',
+                      fontSize: viewportHeight < 600 ? '13px' : '14px',
+                      lineHeight: '1.6',
+                      color: '#333',
+                      padding: '2px 0 8px 0',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: '#ccc transparent'
+                    }}>
+                      {parseMarkdownToJSX(summaryContent)}
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      color: '#999', 
+                      padding: '20px',
+                      fontSize: '14px'
+                    }}>
+                      正在加载会议纪要...
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
