@@ -684,7 +684,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 padding: isTranscriptionCollapsed ? '0' : '8px 0'
               }}>
                 <div className="card-description">
-                  <div className="location-icon">
+                  <div className="location-icon" style={{
+                    transform: isTranscriptionCollapsed ? 'rotate(180deg)' : 'rotate(90deg)',
+                    transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)'
+                  }}>
                     <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
                   </div>
                   <pre className="description-text" style={{
@@ -735,7 +738,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 padding: isSummaryCollapsed ? '0' : '8px 0'
               }}>
                 <div className="card-description">
-                  <div className="meeting-icon">
+                  <div className="meeting-icon" style={{
+                    transform: isSummaryCollapsed ? 'rotate(180deg)' : 'rotate(90deg)',
+                    transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)'
+                  }}>
                     <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
                   </div>
                   <div className="description-text markdown-content" style={{
