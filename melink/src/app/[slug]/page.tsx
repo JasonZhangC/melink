@@ -133,9 +133,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
       <div className="title-section">
         <div className="title-content">
           <h1 className="main-title">{data?.title}</h1>
-          <div className="arrow-down">
-            <Image src="/assets/f7481fc2238f527543122988b5b213d7895fa419.svg" alt="Arrow Down" width={18} height={18} />
-          </div>
         </div>
         <div className="brand">MELINK</div>
       </div>
@@ -147,9 +144,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
             <div className="card-text">
               <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)}>
                 <h2 className="card-title">语音转录</h2>
-                <div className={`collapse-arrow ${!isTranscriptionCollapsed ? 'expanded' : ''}`}>
-                  <Image src="/assets/f7481fc2238f527543122988b5b213d7895fa419.svg" alt="expand" width={14} height={14} />
-                </div>
               </div>
               <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`}>
                 <div className="card-description">
@@ -172,9 +166,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
             <div className="card-text">
               <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}>
                 <h2 className="card-title">会议纪要</h2>
-                <div className={`collapse-arrow ${!isSummaryCollapsed ? 'expanded' : ''}`}>
-                  <Image src="/assets/f7481fc2238f527543122988b5b213d7895fa419.svg" alt="expand" width={14} height={14} />
-                </div>
               </div>
               <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`}>
                 <div className="card-description">
