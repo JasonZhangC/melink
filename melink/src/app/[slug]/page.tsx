@@ -710,22 +710,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 </div>
               </div>
             </div>
-            <div className="card-image">
-              {videoThumbnail ? (
-                <Image 
-                  src={videoThumbnail} 
-                  alt="Video Thumbnail" 
-                  width={86} 
-                  height={86}
-                  style={{
-                    borderRadius: '8px',
-                    objectFit: 'cover'
-                  }}
-                />
-              ) : (
-                <Image src="/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png" alt="Voice" width={86} height={86} />
-              )}
-            </div>
           </div>
         </div>
 
