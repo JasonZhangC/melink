@@ -232,6 +232,9 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   // 控制内容折叠的状态
   const [isTranscriptionCollapsed, setIsTranscriptionCollapsed] = useState(true);
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
+  
+  // 控制二维码弹窗显示
+  const [showQRCode, setShowQRCode] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -281,21 +284,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   }, [params]);
 
   const handleShare = async () => {
-    const shareData = {
-      title: data?.title || '黑客松交流',
-      url: window.location.href,
-    };
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (err) {
-        console.error('分享错误:', err);
-      }
-    } else {
-      navigator.clipboard.writeText(shareData.url)
-        .then(() => alert('链接已复制到剪贴板'))
-        .catch(err => console.error('无法复制文本: ', err));
-    }
+    setShowQRCode(true);
   };
 
   const handleDownload = () => {
@@ -454,6 +443,133 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
           </div>
         </div>
       </div>
+
+      {/* 二维码弹窗 */}
+      {showQRCode && (
+        <div 
+          className="qr-modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setShowQRCode(false)}
+        >
+          <div 
+            className="qr-modal-content"
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              padding: '24px',
+              maxWidth: '320px',
+              width: '90%',
+              textAlign: 'center',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => setShowQRCode(false)}
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                border: 'none',
+                background: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#666',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+
+            <h3 style={{
+              margin: '0 0 16px 0',
+              fontSize: '18px',
+              fontWeight: '600',
+              color: '#333'
+            }}>
+              分享链接
+            </h3>
+
+            {/* 二维码图片 */}
+            <div style={{
+              margin: '16px 0',
+              padding: '16px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '12px',
+              display: 'inline-block'
+            }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                alt="分享二维码"
+                style={{
+                  width: '200px',
+                  height: '200px',
+                  border: 'none'
+                }}
+              />
+            </div>
+
+            {/* URL显示 */}
+            <div style={{
+              margin: '16px 0',
+              padding: '12px',
+              backgroundColor: '#f1f3f4',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: '#666',
+              wordBreak: 'break-all',
+              lineHeight: '1.4'
+            }}>
+              {typeof window !== 'undefined' ? window.location.href : ''}
+            </div>
+
+            {/* 复制链接按钮 */}
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  navigator.clipboard.writeText(window.location.href)
+                    .then(() => {
+                      alert('链接已复制到剪贴板');
+                      setShowQRCode(false);
+                    })
+                    .catch(err => console.error('无法复制文本: ', err));
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 24px',
+                backgroundColor: '#007AFF',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                marginTop: '8px'
+              }}
+            >
+              复制链接
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
