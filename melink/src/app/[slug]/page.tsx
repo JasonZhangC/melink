@@ -674,8 +674,19 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         <div className="voice-card">
           <div className="card-content">
             <div className="card-text">
-              <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)}>
+              <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)} style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
                 <h2 className="card-title">语音转录</h2>
+                <div className="location-icon" style={{
+                  transform: isTranscriptionCollapsed ? 'rotate(270deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)',
+                  flexShrink: 0
+                }}>
+                  <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
+                </div>
               </div>
               <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`} style={{
                 maxHeight: isTranscriptionCollapsed ? '0' : calculateContentHeight(),
@@ -684,15 +695,9 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 padding: isTranscriptionCollapsed ? '0' : '2px 0'
               }}>
                 <div className="card-description" style={{ marginTop: '0' }}>
-                  <div className="location-icon" style={{
-                    transform: isTranscriptionCollapsed ? 'rotate(180deg)' : 'rotate(90deg)',
-                    transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)'
-                  }}>
-                    <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
-                  </div>
                   <pre className="description-text" style={{
                     margin: 0,
-                    padding: '2px 8px 8px 0',
+                    padding: '2px 0 8px 0',
                     fontFamily: 'inherit',
                     fontSize: '14px',
                     lineHeight: '1.6',
@@ -728,8 +733,19 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         <div className="meeting-card">
           <div className="card-content">
             <div className="card-text">
-              <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}>
+              <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)} style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
                 <h2 className="card-title">会议纪要</h2>
+                <div className="meeting-icon" style={{
+                  transform: isSummaryCollapsed ? 'rotate(270deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)',
+                  flexShrink: 0
+                }}>
+                  <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
+                </div>
               </div>
               <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`} style={{
                 maxHeight: isSummaryCollapsed ? '0' : calculateContentHeight(),
@@ -738,18 +754,12 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
                 padding: isSummaryCollapsed ? '0' : '2px 0'
               }}>
                 <div className="card-description" style={{ marginTop: '0' }}>
-                  <div className="meeting-icon" style={{
-                    transform: isSummaryCollapsed ? 'rotate(180deg)' : 'rotate(90deg)',
-                    transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)'
-                  }}>
-                    <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
-                  </div>
                   <div className="description-text markdown-content" style={{
                     fontFamily: 'inherit',
                     fontSize: viewportHeight < 600 ? '13px' : '14px', // 小屏幕使用更小字体
                     lineHeight: '1.6',
                     color: '#333',
-                    padding: '2px 8px 8px 0',
+                    padding: '2px 0 8px 0',
                     scrollbarWidth: 'thin',
                     scrollbarColor: '#ccc transparent'
                   }}>
