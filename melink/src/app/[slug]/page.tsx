@@ -208,14 +208,88 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
     setShowQRCode(true);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!data?.videoUrl) return;
-    const a = document.createElement('a');
-    a.href = data.videoUrl;
-    a.download = `${data.title || 'video'}.mp4`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    
+    try {
+      // 显示下载提示
+      const downloadText = document.createElement('div');
+      downloadText.innerHTML = '正在准备下载...';
+      downloadText.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        z-index: 9999;
+        font-size: 14px;
+      `;
+      document.body.appendChild(downloadText);
+      
+      // 获取视频数据
+      const response = await fetch(data.videoUrl);
+      if (!response.ok) throw new Error('下载失败');
+      
+      // 创建blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // 创建下载链接
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.title || '会议录制'}.mp4`;
+      a.style.display = 'none';
+      
+      // 强制下载
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // 清理URL对象
+      window.URL.revokeObjectURL(url);
+      
+      // 更新提示信息
+      downloadText.innerHTML = '下载完成！';
+      setTimeout(() => {
+        document.body.removeChild(downloadText);
+      }, 2000);
+      
+    } catch (error) {
+      console.error('下载失败:', error);
+      
+      // 如果blob下载失败，回退到简单下载方式
+      const a = document.createElement('a');
+      a.href = data.videoUrl;
+      a.download = `${data.title || '会议录制'}.mp4`;
+      a.target = '_blank';
+      a.setAttribute('download', `${data.title || '会议录制'}.mp4`);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // 显示错误提示
+      const errorText = document.createElement('div');
+      errorText.innerHTML = '下载可能需要在新窗口中手动保存';
+      errorText.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(255, 0, 0, 0.8);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        z-index: 9999;
+        font-size: 14px;
+      `;
+      document.body.appendChild(errorText);
+      setTimeout(() => {
+        document.body.removeChild(errorText);
+      }, 3000);
+    }
   };
 
   if (loading) {
