@@ -24,12 +24,121 @@ async function fetchTextContent(url: string): Promise<string> {
     }
 }
 
+// 截取视频首帧的函数
+const captureVideoFrame = (videoUrl: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    if (!context) {
+      reject(new Error('无法获取canvas上下文'));
+      return;
+    }
+    
+    video.crossOrigin = 'anonymous';
+    video.muted = true; // 静音以避免自动播放限制
+    video.preload = 'metadata';
+    
+    let attemptTimes = [2, 5, 8, 1, 10]; // 尝试多个时间点（秒）
+    let currentAttempt = 0;
+    
+    const attemptCapture = () => {
+      if (currentAttempt >= attemptTimes.length) {
+        reject(new Error('无法获取有效的视频帧'));
+        return;
+      }
+      
+      video.currentTime = attemptTimes[currentAttempt];
+      currentAttempt++;
+    };
+    
+    video.onloadedmetadata = () => {
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      
+      // 确保视频有足够长度
+      if (video.duration > 0) {
+        attemptCapture();
+      } else {
+        setTimeout(() => attemptCapture(), 500);
+      }
+    };
+    
+    video.onseeked = () => {
+      // 稍等一下确保帧渲染完成
+      setTimeout(() => {
+        try {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // 检查是否为纯黑图片
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          let isBlack = true;
+          
+          // 检查前1000个像素点是否都是黑色
+          for (let i = 0; i < Math.min(1000 * 4, data.length); i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // 如果RGB值大于30，认为不是纯黑
+            if (r > 30 || g > 30 || b > 30) {
+              isBlack = false;
+              break;
+            }
+          }
+          
+          if (isBlack && currentAttempt < attemptTimes.length) {
+            // 如果是黑屏，尝试下一个时间点
+            console.log(`时间点 ${attemptTimes[currentAttempt-1]}s 为黑屏，尝试下一个时间点`);
+            attemptCapture();
+          } else {
+            // 不是黑屏或者已经尝试完所有时间点
+            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+            resolve(dataURL);
+          }
+        } catch (err) {
+          console.error('截取帧时出错:', err);
+          if (currentAttempt < attemptTimes.length) {
+            attemptCapture();
+          } else {
+            reject(err);
+          }
+        }
+      }, 100);
+    };
+    
+    video.onerror = (e) => {
+      console.error('视频加载错误:', e);
+      reject(new Error('视频加载失败'));
+    };
+    
+    video.ontimeupdate = () => {
+      // 当时间更新时，确保视频已经寻址到正确位置
+    };
+    
+    // 设置超时
+    const timeout = setTimeout(() => {
+      reject(new Error('视频截取超时'));
+    }, 15000);
+    
+    video.addEventListener('loadeddata', () => {
+      clearTimeout(timeout);
+    });
+    
+    video.src = videoUrl;
+    video.load();
+  });
+};
+
 export default function SharePage({ params }: { params: Promise<{ slug: string }> }) {
   const [data, setData] = useState<MeetingData | null>(null);
   const [transcriptionContent, setTranscriptionContent] = useState<string>('');
   const [summaryContent, setSummaryContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [videoThumbnail, setVideoThumbnail] = useState<string>('');
   
   // 控制内容折叠的状态
   const [isTranscriptionCollapsed, setIsTranscriptionCollapsed] = useState(true);
@@ -52,6 +161,7 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         const meetingData: MeetingData = await response.json();
         setData(meetingData);
         
+        // 获取文本内容
         const [transcription, summary] = await Promise.all([
           fetchTextContent(meetingData.transcriptionUrl),
           fetchTextContent(meetingData.summaryUrl)
@@ -59,6 +169,16 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         
         setTranscriptionContent(transcription);
         setSummaryContent(summary);
+        
+        // 截取视频首帧
+        try {
+          const thumbnail = await captureVideoFrame(meetingData.videoUrl);
+          setVideoThumbnail(thumbnail);
+        } catch (err) {
+          console.error('截取视频首帧失败:', err);
+          // 如果截取失败，使用默认图片
+          setVideoThumbnail('/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png');
+        }
         
       } catch (err) {
         console.error('加载数据失败:', err);
@@ -155,7 +275,20 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
               </div>
             </div>
             <div className="card-image">
-              <Image src="/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png" alt="Voice" width={86} height={86} />
+              {videoThumbnail ? (
+                <img 
+                  src={videoThumbnail} 
+                  alt="Video Thumbnail" 
+                  width={86} 
+                  height={86}
+                  style={{
+                    borderRadius: '8px',
+                    objectFit: 'cover'
+                  }}
+                />
+              ) : (
+                <Image src="/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png" alt="Voice" width={86} height={86} />
+              )}
             </div>
           </div>
         </div>
