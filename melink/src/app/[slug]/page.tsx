@@ -113,113 +113,7 @@ function parseMarkdownToJSX(text: string): React.ReactElement {
   return <div>{elements}</div>;
 }
 
-// 截取视频首帧的函数
-const captureVideoFrame = (videoUrl: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    
-    if (!context) {
-      reject(new Error('无法获取canvas上下文'));
-      return;
-    }
-    
-    video.crossOrigin = 'anonymous';
-    video.muted = true; // 静音以避免自动播放限制
-    video.preload = 'metadata';
-    
-    const attemptTimes = [2, 5, 8, 1, 10]; // 尝试多个时间点（秒）
-    let currentAttempt = 0;
-    
-    const attemptCapture = () => {
-      if (currentAttempt >= attemptTimes.length) {
-        reject(new Error('无法获取有效的视频帧'));
-        return;
-      }
-      
-      video.currentTime = attemptTimes[currentAttempt];
-      currentAttempt++;
-    };
-    
-    video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      
-      // 确保视频有足够长度
-      if (video.duration > 0) {
-        attemptCapture();
-      } else {
-        setTimeout(() => attemptCapture(), 500);
-      }
-    };
-    
-    video.onseeked = () => {
-      // 稍等一下确保帧渲染完成
-      setTimeout(() => {
-        try {
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // 检查是否为纯黑图片
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const data = imageData.data;
-          let isBlack = true;
-          
-          // 检查前1000个像素点是否都是黑色
-          for (let i = 0; i < Math.min(1000 * 4, data.length); i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            
-            // 如果RGB值大于30，认为不是纯黑
-            if (r > 30 || g > 30 || b > 30) {
-              isBlack = false;
-              break;
-            }
-          }
-          
-          if (isBlack && currentAttempt < attemptTimes.length) {
-            // 如果是黑屏，尝试下一个时间点
-            console.log(`时间点 ${attemptTimes[currentAttempt-1]}s 为黑屏，尝试下一个时间点`);
-            attemptCapture();
-          } else {
-            // 不是黑屏或者已经尝试完所有时间点
-            const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-            resolve(dataURL);
-          }
-        } catch (err) {
-          console.error('截取帧时出错:', err);
-          if (currentAttempt < attemptTimes.length) {
-            attemptCapture();
-          } else {
-            reject(err);
-          }
-        }
-      }, 100);
-    };
-    
-    video.onerror = (e) => {
-      console.error('视频加载错误:', e);
-      reject(new Error('视频加载失败'));
-    };
-    
-    video.ontimeupdate = () => {
-      // 当时间更新时，确保视频已经寻址到正确位置
-    };
-    
-    // 设置超时
-    const timeout = setTimeout(() => {
-      reject(new Error('视频截取超时'));
-    }, 15000);
-    
-    video.addEventListener('loadeddata', () => {
-      clearTimeout(timeout);
-    });
-    
-    video.src = videoUrl;
-    video.load();
-  });
-};
+
 
 export default function SharePage({ params }: { params: Promise<{ slug: string }> }) {
   const [data, setData] = useState<MeetingData | null>(null);
@@ -227,7 +121,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   const [summaryContent, setSummaryContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [videoThumbnail, setVideoThumbnail] = useState<string>('');
   
   // 控制内容折叠的状态
   const [isTranscriptionCollapsed, setIsTranscriptionCollapsed] = useState(true);
@@ -235,7 +128,40 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   
   // 控制二维码弹窗显示
   const [showQRCode, setShowQRCode] = useState(false);
+  
+  // 视口高度状态
+  const [viewportHeight, setViewportHeight] = useState(0);
 
+  // 监听窗口大小变化
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      setViewportHeight(window.innerHeight);
+    };
+
+    // 初始设置
+    updateViewportHeight();
+
+    // 添加事件监听器
+    window.addEventListener('resize', updateViewportHeight);
+    window.addEventListener('orientationchange', updateViewportHeight);
+
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('resize', updateViewportHeight);
+      window.removeEventListener('orientationchange', updateViewportHeight);
+    };
+  }, []);
+
+  // 计算动态高度
+  const calculateContentHeight = () => {
+    if (viewportHeight === 0) return '300px';
+    
+    // 展开时占用屏幕高度的80%，但最少200px，最多600px
+    const expandedHeight = Math.max(200, Math.min(600, viewportHeight * 0.8));
+    return `${expandedHeight}px`;
+  };
+
+  // 主要数据加载 - 优化：快速显示基本内容
   useEffect(() => {
     async function loadData() {
       try {
@@ -253,7 +179,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         const meetingData: MeetingData = await response.json();
         setData(meetingData);
         
-        // 获取文本内容
+        // 快速显示页面，然后异步加载文本内容
+        setLoading(false);
+        
+        // 异步获取文本内容
         const [transcription, summary] = await Promise.all([
           fetchTextContent(meetingData.transcriptionUrl),
           fetchTextContent(meetingData.summaryUrl)
@@ -261,16 +190,6 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         
         setTranscriptionContent(transcription);
         setSummaryContent(summary);
-        
-        // 截取视频首帧
-        try {
-          const thumbnail = await captureVideoFrame(meetingData.videoUrl);
-          setVideoThumbnail(thumbnail);
-        } catch (err) {
-          console.error('截取视频首帧失败:', err);
-          // 如果截取失败，使用默认图片
-          setVideoThumbnail('/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png');
-        }
         
       } catch (err) {
         console.error('加载数据失败:', err);
@@ -282,6 +201,8 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
     
     loadData();
   }, [params]);
+
+
 
   const handleShare = async () => {
     setShowQRCode(true);
@@ -300,8 +221,23 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   if (loading) {
     return (
       <div className="container">
-        <div style={{ textAlign: 'center', paddingTop: '50%' }}>
-          <p>加载中...</p>
+        <div style={{ textAlign: 'center', paddingTop: '30%' }}>
+          <div style={{ 
+            width: '40px', 
+            height: '40px', 
+            border: '3px solid #f3f3f3',
+            borderTop: '3px solid #007AFF',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }}></div>
+          <p style={{ color: '#666', fontSize: '16px' }}>加载中...</p>
+          <style jsx>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
         </div>
       </div>
     );
@@ -310,9 +246,9 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   if (error || !data) {
     return (
       <div className="container">
-        <div style={{ textAlign: 'center', paddingTop: '50%' }}>
-          <h1>{error || '页面未找到'}</h1>
-          <p>请检查链接是否正确或联系管理员。</p>
+        <div style={{ textAlign: 'center', paddingTop: '30%' }}>
+          <h1 style={{ color: '#ff4444', marginBottom: '16px' }}>{error || '页面未找到'}</h1>
+          <p style={{ color: '#666' }}>请检查链接是否正确或联系管理员。</p>
         </div>
       </div>
     );
@@ -321,7 +257,13 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
   return (
     <div className="container">
       <div className="nav-bar">
-        <div className="publisher">发布者：</div>
+        <div className="publisher">{data?.createdAt ? new Date(data.createdAt).toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : '未知'}</div>
       </div>
 
       <div className="avatar">
@@ -339,47 +281,52 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         <div className="voice-card">
           <div className="card-content">
             <div className="card-text">
-              <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)}>
-                <h2 className="card-title">语音转录</h2>
-              </div>
-              <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`} style={{
-                maxHeight: isTranscriptionCollapsed ? '0' : '300px',
-                overflowY: isTranscriptionCollapsed ? 'hidden' : 'auto',
-                transition: 'max-height 0.3s ease-in-out'
+              <div className="card-header" onClick={() => setIsTranscriptionCollapsed(!isTranscriptionCollapsed)} style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div className="card-description">
-                  <div className="location-icon">
-                    <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
-                  </div>
-                  <pre className="description-text" style={{
-                    margin: 0,
-                    padding: '0 8px 8px 0',
-                    fontFamily: 'inherit',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: '#ccc transparent'
-                  }}>{transcriptionContent}</pre>
+                <h2 className="card-title">语音转录</h2>
+                <div className="location-icon" style={{
+                  transform: isTranscriptionCollapsed ? 'rotate(270deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)',
+                  flexShrink: 0
+                }}>
+                  <Image src="/assets/41b48aed0a734514f471271c3b2f04f8ef808dd3.svg" alt="Location" width={16} height={16} />
                 </div>
               </div>
-            </div>
-            <div className="card-image">
-              {videoThumbnail ? (
-                <Image 
-                  src={videoThumbnail} 
-                  alt="Video Thumbnail" 
-                  width={86} 
-                  height={86}
-                  style={{
-                    borderRadius: '8px',
-                    objectFit: 'cover'
-                  }}
-                />
-              ) : (
-                <Image src="/assets/60092f071a6ca4334df62c5065160922d3eafeb7.png" alt="Voice" width={86} height={86} />
-              )}
+              <div className={`collapsible-content ${isTranscriptionCollapsed ? 'collapsed' : ''}`} style={{
+                maxHeight: isTranscriptionCollapsed ? '0' : calculateContentHeight(),
+                overflowY: isTranscriptionCollapsed ? 'hidden' : 'auto',
+                transition: 'max-height 0.3s ease-in-out, padding 0.3s ease-in-out',
+                padding: isTranscriptionCollapsed ? '0' : '2px 0'
+              }}>
+                <div className="card-description" style={{ marginTop: '0' }}>
+                  {transcriptionContent ? (
+                    <pre className="description-text" style={{
+                      margin: 0,
+                      padding: '2px 0 8px 0',
+                      fontFamily: 'inherit',
+                      fontSize: '14px',
+                      lineHeight: '1.6',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: '#ccc transparent',
+                      color: '#555'
+                    }}>{transcriptionContent}</pre>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      color: '#999', 
+                      padding: '20px',
+                      fontSize: '14px'
+                    }}>
+                      正在加载转录内容...
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -388,29 +335,49 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
         <div className="meeting-card">
           <div className="card-content">
             <div className="card-text">
-              <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}>
+              <div className="card-header" onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)} style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
                 <h2 className="card-title">会议纪要</h2>
+                <div className="meeting-icon" style={{
+                  transform: isSummaryCollapsed ? 'rotate(270deg)' : 'rotate(180deg)',
+                  transition: 'transform 0.4s cubic-bezier(0.68, -0.15, 0.265, 1.15)',
+                  flexShrink: 0
+                }}>
+                  <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
+                </div>
               </div>
               <div className={`collapsible-content ${isSummaryCollapsed ? 'collapsed' : ''}`} style={{
-                maxHeight: isSummaryCollapsed ? '0' : '300px',
+                maxHeight: isSummaryCollapsed ? '0' : calculateContentHeight(),
                 overflowY: isSummaryCollapsed ? 'hidden' : 'auto',
-                transition: 'max-height 0.3s ease-in-out'
+                transition: 'max-height 0.3s ease-in-out, padding 0.3s ease-in-out',
+                padding: isSummaryCollapsed ? '0' : '2px 0'
               }}>
-                <div className="card-description">
-                  <div className="meeting-icon">
-                    <Image src="/assets/f46695159d547b43fd3b827aa4a5d7399961fe6a.svg" alt="Meeting" width={16} height={16} />
-                  </div>
-                  <div className="description-text markdown-content" style={{
-                    fontFamily: 'inherit',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    color: '#333',
-                    padding: '0 8px 8px 0',
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: '#ccc transparent'
-                  }}>
-                    {parseMarkdownToJSX(summaryContent)}
-                  </div>
+                <div className="card-description" style={{ marginTop: '0' }}>
+                  {summaryContent ? (
+                    <div className="description-text markdown-content" style={{
+                      fontFamily: 'inherit',
+                      fontSize: viewportHeight < 600 ? '13px' : '14px',
+                      lineHeight: '1.6',
+                      color: '#333',
+                      padding: '2px 0 8px 0',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: '#ccc transparent'
+                    }}>
+                      {parseMarkdownToJSX(summaryContent)}
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      color: '#999', 
+                      padding: '20px',
+                      fontSize: '14px'
+                    }}>
+                      正在加载会议纪要...
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
