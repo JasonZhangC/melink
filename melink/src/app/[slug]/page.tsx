@@ -295,10 +295,10 @@ export default function SharePage({ params }: { params: Promise<{ slug: string }
       const reader = response.body?.getReader();
       if (!reader) throw new Error('无法读取响应流');
       
-      let receivedLength = 0;
-      const chunks: Uint8Array[] = [];
-      let startTime = Date.now();
-      let lastUpdateTime = startTime;
+             let receivedLength = 0;
+       const chunks: Uint8Array[] = [];
+       const startTime = Date.now();
+       let lastUpdateTime = startTime;
       
       // 格式化文件大小
       const formatBytes = (bytes: number) => {
